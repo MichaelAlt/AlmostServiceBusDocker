@@ -116,9 +116,9 @@ public class ReceiverLinkEndpoint : LinkEndpoint
             MessageAnnotations = new MessageAnnotations
             {
                 [new Symbol("x-opt-sequence-number")] = brokered.SequenceNumber,
-                [new Symbol("x-opt-enqueued-time")] = brokered.EnqueuedTimeUtc,
+                [new Symbol("x-opt-enqueued-time")] = brokered.EnqueuedTimeUtc.UtcDateTime,
                 [new Symbol("x-opt-lock-token")] = Guid.TryParse(brokered.LockToken, out var guid) ? guid : Guid.NewGuid(),
-                [new Symbol("x-opt-locked-until")] = DateTimeOffset.UtcNow.Add(LockDuration)
+                [new Symbol("x-opt-locked-until")] = DateTimeOffset.UtcNow.Add(LockDuration).UtcDateTime
             }
         };
 

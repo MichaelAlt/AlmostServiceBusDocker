@@ -64,6 +64,11 @@ public class ServiceBusEmulatorFixture : IAsyncDisposable
 
     public NamespaceContext GetNamespaceContext() => _registry.GetOrCreate(_namespace);
 
+    /// <summary>
+    /// Returns the "default" namespace context used by the AMQP server for link routing.
+    /// </summary>
+    public NamespaceContext GetDefaultNamespaceContext() => _registry.GetOrCreate("default");
+
     private static int GetFreePort()
     {
         var listener = new System.Net.Sockets.TcpListener(System.Net.IPAddress.Loopback, 0);
