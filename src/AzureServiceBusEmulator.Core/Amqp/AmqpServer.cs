@@ -27,11 +27,12 @@ public class AmqpServer : IDisposable
         _host = new ContainerHost(address);
 
         // Enable SASL so the Azure SDK's AMQPS connections can authenticate.
-        // The SDK always negotiates SASL after TLS termination.
+        // The SDK uses MSSBCBS (Microsoft Service Bus CBS) mechanism.
         foreach (var listener in _host.Listeners)
         {
             listener.SASL.EnableAnonymousMechanism = true;
             listener.SASL.EnablePlainMechanism("RootManageSharedAccessKey", "emulator");
+            listener.SASL.EnableMechanism(MssbcbsSaslProfile.MechanismName, new MssbcbsSaslProfile());
         }
 
         // Register CBS authentication handler
