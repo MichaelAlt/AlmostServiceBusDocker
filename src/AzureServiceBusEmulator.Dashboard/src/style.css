@@ -1,0 +1,14 @@
+/* placeholder - will be populated in Task 3 */
+:root {
+  --bg-base: #1e1e2e;
+  --text-muted: #6c7086;
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  background: var(--bg-base);
+  color: #cdd6f4;
+  font-size: 13px;
+}
