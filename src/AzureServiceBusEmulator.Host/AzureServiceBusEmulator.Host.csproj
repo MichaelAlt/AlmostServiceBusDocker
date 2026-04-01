@@ -4,6 +4,10 @@
     <ProjectReference Include="..\AzureServiceBusEmulator.Core\AzureServiceBusEmulator.Core.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <PackageReference Include="Vite.AspNetCore" Version="2.4.1" />
+  </ItemGroup>
+
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
     <Nullable>enable</Nullable>

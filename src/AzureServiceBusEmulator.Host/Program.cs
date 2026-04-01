@@ -11,6 +11,7 @@ using Vite.AspNetCore;
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Logging.SetMinimumLevel(LogLevel.Warning);
+builder.Services.AddViteServices();
 
 var publicPort = builder.Configuration.GetValue("Port", 5672);
 var amqpsPort = 5671; // Default AMQPS port — ServiceBusClient connects here
@@ -33,9 +34,18 @@ app.UseCors(policy => policy
     .AllowAnyMethod()
     .AllowAnyHeader());
 
+if (app.Environment.IsDevelopment())
+{
+    app.UseViteDevelopmentServer();
+}
+
+app.UseStaticFiles();
+
 app.MapServiceBusManagementApi(registry);
 app.MapDashboardApi(registry);
 app.MapDashboardSse(eventBus);
+
+app.MapFallbackToFile("index.html");
 
 var amqpServer = new AmqpServer(new AmqpServerOptions { Port = internalAmqpPort }, registry);
 amqpServer.Start();
