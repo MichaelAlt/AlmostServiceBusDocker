@@ -1,7 +1,10 @@
+using System.Net;
+using System.Net.Sockets;
 using System.Text;
 using System.Text.Json;
 using Amqp;
 using Amqp.Framing;
+using Azure.Core.Pipeline;
 using Azure.Messaging.ServiceBus.Administration;
 using AzureServiceBusEmulator.TestHost;
 
@@ -18,7 +21,7 @@ namespace AzureServiceBusEmulator.MassTransit.Tests;
 /// The AMQP client (<see cref="Azure.Messaging.ServiceBus.ServiceBusClient"/>) requires
 /// TLS and SAS token negotiation that our emulator's plain AMQP endpoint doesn't support.
 /// Instead, we use AMQPNetLite directly to exercise the same AMQP message flow, while
-/// the topology creation uses the real Azure SDK admin client via <see cref="LocalRedirectTransport"/>.
+/// the topology creation uses the real Azure SDK admin client via the multiplexer's HTTPS endpoint.
 ///
 /// This proves the emulator correctly handles the full MassTransit lifecycle:
 /// topology creation + message routing + pub/sub forwarding.
@@ -32,8 +35,21 @@ public class MassTransitPubSubTests : IAsyncLifetime
     {
         await _fixture.StartAsync();
 
+        var handler = new SocketsHttpHandler
+        {
+            SslOptions = { RemoteCertificateValidationCallback = (_, _, _, _) => true },
+            ConnectCallback = async (context, ct) =>
+            {
+                var port = context.DnsEndPoint.Port;
+                var socket = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
+                await socket.ConnectAsync(IPAddress.Loopback, port, ct);
+                return new NetworkStream(socket, ownsSocket: true);
+            }
+        };
+
         var options = new ServiceBusAdministrationClientOptions();
-        options.Transport = new LocalRedirectTransport(_fixture.HttpPort);
+        options.Transport = new HttpClientTransport(new HttpClient(handler));
+
         _adminClient = new ServiceBusAdministrationClient(
             _fixture.ConnectionString,
             options);
@@ -46,7 +62,7 @@ public class MassTransitPubSubTests : IAsyncLifetime
 
     private async Task<Connection> OpenAmqpConnectionAsync()
     {
-        var address = new Address("localhost", _fixture.AmqpPort, null, null, "/", "AMQP");
+        var address = new Address("localhost", _fixture.PublicPort, null, null, "/", "AMQP");
         return await Connection.Factory.CreateAsync(address);
     }
 
