@@ -66,6 +66,10 @@ public class ServiceBusLinkProcessor : ILinkProcessor
 
         var context = _registry.GetOrCreate("default");
 
+        // Set max message size on the attach frame (256 KB, matching Azure Service Bus standard tier).
+        // Without this, the SDK sees -1 and rejects all messages as too large.
+        attachContext.Attach.MaxMessageSize = 256 * 1024;
+
         if (isServerReceiver)
         {
             // Client is sending messages to us -- auto-create entity if needed
