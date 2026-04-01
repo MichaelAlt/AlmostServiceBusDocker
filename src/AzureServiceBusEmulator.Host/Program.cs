@@ -4,6 +4,8 @@ using AzureServiceBusEmulator.Core.Management;
 
 var builder = WebApplication.CreateBuilder(args);
 
+builder.Logging.SetMinimumLevel(LogLevel.Warning);
+
 var amqpPort = builder.Configuration.GetValue("Amqp:Port", 5672);
 var httpPort = builder.Configuration.GetValue("Http:Port", 5300);
 
@@ -26,5 +28,7 @@ app.Lifetime.ApplicationStopping.Register(() => amqpServer.Stop());
 Console.WriteLine($"Azure Service Bus Emulator started");
 Console.WriteLine($"  AMQP: amqp://localhost:{amqpPort}");
 Console.WriteLine($"  HTTP: http://localhost:{httpPort}");
+Console.WriteLine();
+Console.WriteLine($"  Connection String: Endpoint=sb://localhost:{amqpPort};SharedAccessKeyName=RootManageSharedAccessKey;SharedAccessKey=emulator");
 
 app.Run();

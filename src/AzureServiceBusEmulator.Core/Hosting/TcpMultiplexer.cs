@@ -31,7 +31,7 @@ public class TcpMultiplexer
         var listener = new TcpListener(IPAddress.Any, _listenPort);
         listener.Start();
 
-        ct.Register(() => listener.Stop());
+        using var reg = ct.Register(() => listener.Stop());
 
         try
         {
@@ -58,7 +58,7 @@ public class TcpMultiplexer
 
             // Peek the first byte
             var firstByte = new byte[1];
-            var read = await stream.ReadAsync(firstByte, 0, 1, ct);
+            var read = await stream.ReadAsync(firstByte.AsMemory(0, 1), ct);
             if (read == 0)
             {
                 client.Dispose();
@@ -84,7 +84,7 @@ public class TcpMultiplexer
             var backendStream = backend.GetStream();
 
             // Send the peeked byte first
-            await backendStream.WriteAsync(firstByte, 0, 1, ct);
+            await backendStream.WriteAsync(firstByte.AsMemory(0, 1), ct);
 
             // Bidirectional proxy
             var clientToBackend = stream.CopyToAsync(backendStream, ct)
