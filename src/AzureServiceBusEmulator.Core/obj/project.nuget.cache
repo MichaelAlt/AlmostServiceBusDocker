@@ -1,0 +1,10 @@
+{
+  "version": 2,
+  "dgSpecHash": "5WLPDxLQAuk=",
+  "success": true,
+  "projectFilePath": "D:\\personal\\AzureServiceBusEmulator\\src\\AzureServiceBusEmulator.Core\\AzureServiceBusEmulator.Core.csproj",
+  "expectedPackageFiles": [
+    "C:\\Users\\george\\.nuget\\packages\\amqpnetlite\\2.5.1\\amqpnetlite.2.5.1.nupkg.sha512"
+  ],
+  "logs": []
+}

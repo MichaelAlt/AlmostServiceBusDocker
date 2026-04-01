@@ -1,0 +1,10 @@
+{
+  "version": 2,
+  "dgSpecHash": "Q04HtDbsrOo=",
+  "success": true,
+  "projectFilePath": "D:\\personal\\AzureServiceBusEmulator\\src\\AzureServiceBusEmulator.TestHost\\AzureServiceBusEmulator.TestHost.csproj",
+  "expectedPackageFiles": [
+    "C:\\Users\\george\\.nuget\\packages\\amqpnetlite\\2.5.1\\amqpnetlite.2.5.1.nupkg.sha512"
+  ],
+  "logs": []
+}

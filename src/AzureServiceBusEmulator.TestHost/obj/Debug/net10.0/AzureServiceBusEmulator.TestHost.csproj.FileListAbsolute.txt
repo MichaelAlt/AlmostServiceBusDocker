@@ -1,0 +1,15 @@
+D:\personal\AzureServiceBusEmulator\src\AzureServiceBusEmulator.TestHost\bin\Debug\net10.0\AzureServiceBusEmulator.TestHost.deps.json
+D:\personal\AzureServiceBusEmulator\src\AzureServiceBusEmulator.TestHost\bin\Debug\net10.0\AzureServiceBusEmulator.TestHost.dll
+D:\personal\AzureServiceBusEmulator\src\AzureServiceBusEmulator.TestHost\bin\Debug\net10.0\AzureServiceBusEmulator.TestHost.pdb
+D:\personal\AzureServiceBusEmulator\src\AzureServiceBusEmulator.TestHost\bin\Debug\net10.0\AzureServiceBusEmulator.Core.dll
+D:\personal\AzureServiceBusEmulator\src\AzureServiceBusEmulator.TestHost\bin\Debug\net10.0\AzureServiceBusEmulator.Core.pdb
+D:\personal\AzureServiceBusEmulator\src\AzureServiceBusEmulator.TestHost\obj\Debug\net10.0\AzureServiceBusEmulator.TestHost.csproj.AssemblyReference.cache
+D:\personal\AzureServiceBusEmulator\src\AzureServiceBusEmulator.TestHost\obj\Debug\net10.0\AzureServiceBusEmulator.TestHost.GeneratedMSBuildEditorConfig.editorconfig
+D:\personal\AzureServiceBusEmulator\src\AzureServiceBusEmulator.TestHost\obj\Debug\net10.0\AzureServiceBusEmulator.TestHost.AssemblyInfoInputs.cache
+D:\personal\AzureServiceBusEmulator\src\AzureServiceBusEmulator.TestHost\obj\Debug\net10.0\AzureServiceBusEmulator.TestHost.AssemblyInfo.cs
+D:\personal\AzureServiceBusEmulator\src\AzureServiceBusEmulator.TestHost\obj\Debug\net10.0\AzureServiceBusEmulator.TestHost.csproj.CoreCompileInputs.cache
+D:\personal\AzureServiceBusEmulator\src\AzureServiceBusEmulator.TestHost\obj\Debug\net10.0\AzureSer.A658013C.Up2Date
+D:\personal\AzureServiceBusEmulator\src\AzureServiceBusEmulator.TestHost\obj\Debug\net10.0\AzureServiceBusEmulator.TestHost.dll
+D:\personal\AzureServiceBusEmulator\src\AzureServiceBusEmulator.TestHost\obj\Debug\net10.0\refint\AzureServiceBusEmulator.TestHost.dll
+D:\personal\AzureServiceBusEmulator\src\AzureServiceBusEmulator.TestHost\obj\Debug\net10.0\AzureServiceBusEmulator.TestHost.pdb
+D:\personal\AzureServiceBusEmulator\src\AzureServiceBusEmulator.TestHost\obj\Debug\net10.0\ref\AzureServiceBusEmulator.TestHost.dll

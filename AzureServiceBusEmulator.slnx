@@ -1,0 +1,12 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/AzureServiceBusEmulator.Core/AzureServiceBusEmulator.Core.csproj" />
+    <Project Path="src/AzureServiceBusEmulator.Host/AzureServiceBusEmulator.Host.csproj" />
+    <Project Path="src/AzureServiceBusEmulator.TestHost/AzureServiceBusEmulator.TestHost.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/AzureServiceBusEmulator.MassTransit.Tests/AzureServiceBusEmulator.MassTransit.Tests.csproj" />
+    <Project Path="tests/AzureServiceBusEmulator.SdkIntegration.Tests/AzureServiceBusEmulator.SdkIntegration.Tests.csproj" />
+    <Project Path="tests/AzureServiceBusEmulator.Tests/AzureServiceBusEmulator.Tests.csproj" />
+  </Folder>
+</Solution>

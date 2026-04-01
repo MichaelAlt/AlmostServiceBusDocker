@@ -1,0 +1,12 @@
+D:\personal\AzureServiceBusEmulator\src\AzureServiceBusEmulator.Core\bin\Debug\net10.0\AzureServiceBusEmulator.Core.deps.json
+D:\personal\AzureServiceBusEmulator\src\AzureServiceBusEmulator.Core\bin\Debug\net10.0\AzureServiceBusEmulator.Core.dll
+D:\personal\AzureServiceBusEmulator\src\AzureServiceBusEmulator.Core\bin\Debug\net10.0\AzureServiceBusEmulator.Core.pdb
+D:\personal\AzureServiceBusEmulator\src\AzureServiceBusEmulator.Core\obj\Debug\net10.0\AzureServiceBusEmulator.Core.csproj.AssemblyReference.cache
+D:\personal\AzureServiceBusEmulator\src\AzureServiceBusEmulator.Core\obj\Debug\net10.0\AzureServiceBusEmulator.Core.GeneratedMSBuildEditorConfig.editorconfig
+D:\personal\AzureServiceBusEmulator\src\AzureServiceBusEmulator.Core\obj\Debug\net10.0\AzureServiceBusEmulator.Core.AssemblyInfoInputs.cache
+D:\personal\AzureServiceBusEmulator\src\AzureServiceBusEmulator.Core\obj\Debug\net10.0\AzureServiceBusEmulator.Core.AssemblyInfo.cs
+D:\personal\AzureServiceBusEmulator\src\AzureServiceBusEmulator.Core\obj\Debug\net10.0\AzureServiceBusEmulator.Core.csproj.CoreCompileInputs.cache
+D:\personal\AzureServiceBusEmulator\src\AzureServiceBusEmulator.Core\obj\Debug\net10.0\AzureServiceBusEmulator.Core.dll
+D:\personal\AzureServiceBusEmulator\src\AzureServiceBusEmulator.Core\obj\Debug\net10.0\refint\AzureServiceBusEmulator.Core.dll
+D:\personal\AzureServiceBusEmulator\src\AzureServiceBusEmulator.Core\obj\Debug\net10.0\AzureServiceBusEmulator.Core.pdb
+D:\personal\AzureServiceBusEmulator\src\AzureServiceBusEmulator.Core\obj\Debug\net10.0\ref\AzureServiceBusEmulator.Core.dll
