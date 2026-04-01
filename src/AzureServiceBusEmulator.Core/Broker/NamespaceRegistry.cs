@@ -25,4 +25,10 @@ public sealed class NamespaceRegistry
     /// </summary>
     public NamespaceContext? Get(string namespaceName) =>
         _namespaces.GetValueOrDefault(namespaceName);
+
+    /// <summary>
+    /// Returns the names of all registered namespaces.
+    /// </summary>
+    public IReadOnlyCollection<string> ListNamespaces() =>
+        _namespaces.Keys.ToList().AsReadOnly();
 }

@@ -10,8 +10,10 @@ public sealed class QueueEntity
 {
     private readonly Channel<BrokeredMessage> _channel;
     private readonly ConcurrentDictionary<string, BrokeredMessage> _pending = new();
+    private readonly ConcurrentDictionary<string, BrokeredMessage> _allMessages = new();
     private readonly bool _isDeadLetterQueue;
     private QueueEntity? _deadLetterQueue;
+    private int _messageCount;
 
     public QueueEntity(string name, bool isDeadLetterQueue = false)
     {
@@ -50,6 +52,11 @@ public sealed class QueueEntity
     public string? UserMetadata { get; set; }
 
     /// <summary>
+    /// Approximate count of messages currently in the queue.
+    /// </summary>
+    public int MessageCount => _messageCount;
+
+    /// <summary>
     /// The dead-letter queue for this entity. Created lazily.
     /// If this instance is already a dead-letter queue, returns itself.
     /// </summary>
@@ -73,6 +80,8 @@ public sealed class QueueEntity
     {
         message.LockToken ??= Guid.NewGuid().ToString();
         _channel.Writer.TryWrite(message);
+        _allMessages[message.LockToken!] = message;
+        Interlocked.Increment(ref _messageCount);
     }
 
     /// <summary>
@@ -82,6 +91,7 @@ public sealed class QueueEntity
     public async ValueTask<BrokeredMessage> DequeueAsync(CancellationToken cancellationToken = default)
     {
         var message = await _channel.Reader.ReadAsync(cancellationToken).ConfigureAwait(false);
+        Interlocked.Decrement(ref _messageCount);
         message.DeliveryCount++;
         TrackPending(message);
         return message;
@@ -94,6 +104,7 @@ public sealed class QueueEntity
     {
         if (_channel.Reader.TryRead(out var message))
         {
+            Interlocked.Decrement(ref _messageCount);
             message.DeliveryCount++;
             TrackPending(message);
             return message;
@@ -117,6 +128,7 @@ public sealed class QueueEntity
     public void Complete(string lockToken)
     {
         _pending.TryRemove(lockToken, out _);
+        _allMessages.TryRemove(lockToken, out _);
     }
 
     /// <summary>
@@ -146,6 +158,7 @@ public sealed class QueueEntity
         if (!_pending.TryRemove(lockToken, out var message))
             return;
 
+        _allMessages.TryRemove(lockToken, out _);
         DeadLetter(message, reason, description);
     }
 
@@ -154,5 +167,17 @@ public sealed class QueueEntity
         message.DeadLetterReason = reason;
         message.DeadLetterErrorDescription = description;
         DeadLetterQueue.Enqueue(message);
+    }
+
+    /// <summary>
+    /// Returns a snapshot of messages in the queue without removing them.
+    /// </summary>
+    public IReadOnlyList<BrokeredMessage> PeekMessages(int maxCount = 50)
+    {
+        return _allMessages.Values
+            .OrderBy(m => m.SequenceNumber)
+            .Take(maxCount)
+            .ToList()
+            .AsReadOnly();
     }
 }
