@@ -28,7 +28,11 @@ public class TcpMultiplexer
 
     public async Task StartAsync(CancellationToken ct)
     {
-        var listener = new TcpListener(IPAddress.Any, _listenPort);
+        // Use IPv6Any with DualMode to accept both IPv4 and IPv6 connections.
+        // On Windows 11, localhost resolves to ::1 (IPv6) first — without this,
+        // clients connecting to localhost would fail with ConnectionRefused.
+        var listener = new TcpListener(IPAddress.IPv6Any, _listenPort);
+        listener.Server.DualMode = true;
         listener.Start();
 
         using var reg = ct.Register(() => listener.Stop());

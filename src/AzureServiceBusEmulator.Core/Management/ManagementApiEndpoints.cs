@@ -333,6 +333,10 @@ public static class ManagementApiEndpoints
     {
         var host = request.Host.Host ?? string.Empty;
         var namespaceName = host.Split('.')[0];
+        // When connecting directly to localhost (no subdomain), use the default
+        // namespace to match the AMQP server's namespace resolution.
+        if (namespaceName.Equals("localhost", StringComparison.OrdinalIgnoreCase))
+            namespaceName = "default";
         return registry.GetOrCreate(namespaceName);
     }
 
