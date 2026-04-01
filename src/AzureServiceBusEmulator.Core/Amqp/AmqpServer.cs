@@ -26,6 +26,14 @@ public class AmqpServer : IDisposable
         var address = new Address(_options.Host, _options.Port, null, null, "/", "AMQP");
         _host = new ContainerHost(address);
 
+        // Enable SASL so the Azure SDK's AMQPS connections can authenticate.
+        // The SDK always negotiates SASL after TLS termination.
+        foreach (var listener in _host.Listeners)
+        {
+            listener.SASL.EnableAnonymousMechanism = true;
+            listener.SASL.EnablePlainMechanism("RootManageSharedAccessKey", "emulator");
+        }
+
         // Register CBS authentication handler
         _host.RegisterRequestProcessor("$cbs", new CbsRequestProcessor());
 

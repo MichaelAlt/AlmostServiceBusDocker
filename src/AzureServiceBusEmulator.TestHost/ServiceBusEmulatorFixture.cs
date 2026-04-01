@@ -41,7 +41,6 @@ public class ServiceBusEmulatorFixture : IAsyncDisposable
         HttpPort = GetFreePort();
 
         // 1. Start Kestrel with plain HTTP on internal port
-        //    (TLS is terminated by the multiplexer, not Kestrel)
         var builder = WebApplication.CreateBuilder();
         builder.WebHost.ConfigureKestrel(k =>
         {
@@ -53,7 +52,7 @@ public class ServiceBusEmulatorFixture : IAsyncDisposable
         _webApp.MapServiceBusManagementApi(_registry);
         await _webApp.StartAsync();
 
-        // 2. Start AMQP on internal port
+        // 2. Start AMQP on internal port (with SASL for Azure SDK compatibility)
         _amqpServer = new AmqpServer(new AmqpServerOptions { Port = AmqpPort }, _registry);
         _amqpServer.Start();
 

@@ -11,6 +11,7 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Logging.SetMinimumLevel(LogLevel.Warning);
 
 var publicPort = builder.Configuration.GetValue("Port", 5672);
+var amqpsPort = 5671; // Default AMQPS port — ServiceBusClient connects here
 var internalHttpPort = GetFreePort();
 var internalAmqpPort = GetFreePort();
 
@@ -33,7 +34,19 @@ amqpServer.Start();
 var cert = LoadDevCert();
 
 var multiplexerCts = new CancellationTokenSource();
+
+// Primary multiplexer on the public port (admin client HTTPS + plain AMQP)
 var multiplexer = new TcpMultiplexer(publicPort, internalAmqpPort, internalHttpPort, cert);
+_ = multiplexer.StartAsync(multiplexerCts.Token);
+
+// Secondary multiplexer on the default AMQPS port (5671)
+// The Azure ServiceBusClient strips the port from the connection string and
+// connects to the default AMQPS port. We need to listen there too.
+if (amqpsPort != publicPort)
+{
+    var amqpsMultiplexer = new TcpMultiplexer(amqpsPort, internalAmqpPort, internalHttpPort, cert);
+    _ = amqpsMultiplexer.StartAsync(multiplexerCts.Token);
+}
 
 app.Lifetime.ApplicationStopping.Register(() =>
 {
@@ -41,10 +54,8 @@ app.Lifetime.ApplicationStopping.Register(() =>
     amqpServer.Stop();
 });
 
-_ = multiplexer.StartAsync(multiplexerCts.Token);
-
 Console.WriteLine($"Azure Service Bus Emulator started");
-Console.WriteLine($"  Listening: localhost:{publicPort}");
+Console.WriteLine($"  Listening: localhost:{publicPort} (HTTPS/AMQP), localhost:{amqpsPort} (AMQPS)");
 Console.WriteLine();
 Console.WriteLine($"  Connection String: Endpoint=sb://localhost:{publicPort};SharedAccessKeyName=RootManageSharedAccessKey;SharedAccessKey=emulator");
 

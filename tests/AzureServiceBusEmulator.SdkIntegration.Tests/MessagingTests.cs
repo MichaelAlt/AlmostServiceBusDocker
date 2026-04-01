@@ -21,7 +21,9 @@ public class MessagingTests : IAsyncLifetime
     private async Task<Connection> OpenConnectionAsync()
     {
         var address = new Address("localhost", _fixture.PublicPort, null, null, "/", "AMQP");
-        return await Connection.Factory.CreateAsync(address);
+        var factory = new ConnectionFactory();
+        factory.SASL.Profile = Amqp.Sasl.SaslProfile.Anonymous;
+        return await factory.CreateAsync(address);
     }
 
     [Fact]
