@@ -68,7 +68,7 @@ public class ServiceBusLinkProcessor : ILinkProcessor
             return;
         }
 
-        var context = _registry.GetOrCreate("default");
+        var context = ResolveNamespace(attachContext);
 
         // Set max message size on the attach frame (256 KB, matching Azure Service Bus standard tier).
         // Without this, the SDK sees -1 and rejects all messages as too large.
@@ -97,6 +97,44 @@ public class ServiceBusLinkProcessor : ILinkProcessor
             var endpoint = new ReceiverLinkEndpoint(queue);
             attachContext.Complete(endpoint, 0);
         }
+    }
+
+    /// <summary>
+    /// Resolves the namespace from the AMQP connection's hostname, matching
+    /// the REST API's namespace resolution from the Host header.
+    /// e.g. "app1.localhost" → namespace "app1", "localhost" → namespace "default"
+    /// </summary>
+    private NamespaceContext ResolveNamespace(AttachContext attachContext)
+    {
+        // Walk up: Link → Session → Connection to get the remote OPEN frame's HostName
+        var connection = attachContext.Link.Session.Connection;
+
+        // The Connection.Open property contains the remote peer's OPEN performative
+        // which has the HostName field set by the client.
+        string namespaceName = "default";
+
+        // Try to get hostname from the connection's OPEN frame via reflection
+        // AMQPNetLite doesn't expose this directly on Connection, but the
+        // ListenerConnection's properties or the OPEN frame has it.
+        try
+        {
+            // Connection stores the remote open frame — try to access it
+            var openProp = connection.GetType().GetProperty("Open",
+                System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+            if (openProp?.GetValue(connection) is Open open && !string.IsNullOrEmpty(open.HostName))
+            {
+                var host = open.HostName;
+                namespaceName = host.Split('.')[0];
+                if (namespaceName.Equals("localhost", StringComparison.OrdinalIgnoreCase))
+                    namespaceName = "default";
+            }
+        }
+        catch
+        {
+            // Fallback to default
+        }
+
+        return _registry.GetOrCreate(namespaceName);
     }
 
     private static void EnsureEntityExists(NamespaceContext context, string address)
