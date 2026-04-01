@@ -16,16 +16,88 @@ public static class ManagementApiEndpoints
         this IEndpointRouteBuilder app,
         NamespaceRegistry registry)
     {
-        // ── Queue / Topic CRUD ────────────────────────────────────────────────
+        // MassTransit uses entity names with '/' (e.g. "Namespace/EventType"),
+        // so we must use catch-all route parameters and parse the path ourselves
+        // to distinguish entity ops from subscription/rule ops.
+        //
+        // Path patterns:
+        //   {entityName}                                          → queue/topic
+        //   {topicName}/Subscriptions/{subName}                   → subscription
+        //   {topicName}/Subscriptions                             → list subscriptions
+        //   {topicName}/Subscriptions/{subName}/Rules/{ruleName}  → rule
+        //   {topicName}/Subscriptions/{subName}/Rules             → list rules
+        //
+        // We split on the literal "/Subscriptions/" and "/Rules/" segments.
 
-        // PUT /{entityName}  — create or update queue/topic
-        app.MapPut("/{entityName}", async (string entityName, HttpRequest request) =>
+        app.MapPut("/{**path}", async (HttpRequest request) =>
         {
+            var path = GetRoutePath(request);
             var ns = ResolveNamespace(request, registry);
             var body = await ReadBodyAsync(request);
-
-            var isTopic = body.Contains("TopicDescription", StringComparison.OrdinalIgnoreCase);
             var isUpdate = request.Headers.ContainsKey("If-Match");
+
+            if (TryParseRulePath(path, out var topicName, out var subName, out var ruleName))
+            {
+                // PUT /{topicName}/Subscriptions/{subName}/Rules/{ruleName}
+                var sub = ns.GetSubscription(topicName, subName);
+                if (sub is null)
+                    return ManagementApiErrors.EntityNotFound($"{topicName}/Subscriptions/{subName}");
+
+                RuleProperties props;
+                try
+                {
+                    props = AtomXmlReader.ReadRuleProperties(body);
+                }
+                catch
+                {
+                    props = new RuleProperties(ruleName, FilterType.TrueFilter, null, null, null);
+                }
+
+                var rule = new RuleEntity
+                {
+                    Name = ruleName,
+                    FilterType = props.FilterType,
+                    SqlExpression = props.SqlExpression,
+                    CorrelationId = props.CorrelationId,
+                    ActionExpression = props.ActionExpression
+                };
+                sub.AddOrUpdateRule(rule);
+
+                var xml = AtomXmlWriter.WriteRuleEntry(rule);
+                return Results.Content(xml, AtomXmlContentType,
+                    statusCode: isUpdate ? StatusCodes.Status200OK : StatusCodes.Status201Created);
+            }
+
+            if (TryParseSubscriptionPath(path, out topicName, out subName))
+            {
+                // PUT /{topicName}/Subscriptions/{subName}
+                var topic = ns.GetTopic(topicName);
+                if (topic is null)
+                    return ManagementApiErrors.EntityNotFound(topicName);
+
+                SubscriptionEntity sub;
+                if (isUpdate)
+                {
+                    var existing = ns.GetSubscription(topicName, subName);
+                    if (existing is null)
+                        return ManagementApiErrors.EntityNotFound($"{topicName}/Subscriptions/{subName}");
+                    sub = existing;
+                }
+                else
+                {
+                    sub = topic.AddSubscription(subName);
+                }
+
+                ApplySubscriptionProperties(sub, body, ns);
+
+                var xml = AtomXmlWriter.WriteSubscriptionEntry(sub);
+                return Results.Content(xml, AtomXmlContentType,
+                    statusCode: isUpdate ? StatusCodes.Status200OK : StatusCodes.Status201Created);
+            }
+
+            // PUT /{entityName} — create or update queue/topic
+            var entityName = path;
+            var isTopic = body.Contains("TopicDescription", StringComparison.OrdinalIgnoreCase);
 
             if (isTopic)
             {
@@ -71,26 +143,101 @@ public static class ManagementApiEndpoints
             }
         });
 
-        // GET /{entityName}
-        app.MapGet("/{entityName}", (string entityName, HttpRequest request) =>
+        app.MapGet("/{**path}", (HttpRequest request) =>
         {
+            var path = GetRoutePath(request);
             var ns = ResolveNamespace(request, registry);
+
+            if (TryParseRulePath(path, out var topicName, out var subName, out var ruleName))
+            {
+                // GET /{topicName}/Subscriptions/{subName}/Rules/{ruleName}
+                var sub = ns.GetSubscription(topicName, subName);
+                if (sub is null)
+                    return ManagementApiErrors.EntityNotFound($"{topicName}/Subscriptions/{subName}");
+
+                var rule = sub.GetRule(ruleName);
+                if (rule is null)
+                    return ManagementApiErrors.EntityNotFound($"{topicName}/Subscriptions/{subName}/Rules/{ruleName}");
+
+                return Results.Content(AtomXmlWriter.WriteRuleEntry(rule), AtomXmlContentType);
+            }
+
+            if (TryParseRuleListPath(path, out topicName, out subName))
+            {
+                // GET /{topicName}/Subscriptions/{subName}/Rules
+                var sub = ns.GetSubscription(topicName, subName);
+                if (sub is null)
+                    return ManagementApiErrors.EntityNotFound($"{topicName}/Subscriptions/{subName}");
+
+                var feed = AtomXmlWriter.WriteRuleFeed(sub.GetRules());
+                return Results.Content(feed, AtomXmlContentType);
+            }
+
+            if (TryParseSubscriptionPath(path, out topicName, out subName))
+            {
+                // GET /{topicName}/Subscriptions/{subName}
+                var sub = ns.GetSubscription(topicName, subName);
+                if (sub is null)
+                    return ManagementApiErrors.EntityNotFound($"{topicName}/Subscriptions/{subName}");
+
+                return Results.Content(AtomXmlWriter.WriteSubscriptionEntry(sub), AtomXmlContentType);
+            }
+
+            if (TryParseSubscriptionListPath(path, out topicName))
+            {
+                // GET /{topicName}/Subscriptions
+                var topic = ns.GetTopic(topicName);
+                if (topic is null)
+                    return ManagementApiErrors.EntityNotFound(topicName);
+
+                var feed = AtomXmlWriter.WriteSubscriptionFeed(topic.GetSubscriptions());
+                return Results.Content(feed, AtomXmlContentType);
+            }
+
+            // GET /{entityName}
+            var entityName = path;
 
             var queue = ns.GetQueue(entityName);
             if (queue is not null)
                 return Results.Content(AtomXmlWriter.WriteQueueEntry(queue), AtomXmlContentType);
 
-            var topic = ns.GetTopic(entityName);
-            if (topic is not null)
-                return Results.Content(AtomXmlWriter.WriteTopicEntry(topic), AtomXmlContentType);
+            var topic2 = ns.GetTopic(entityName);
+            if (topic2 is not null)
+                return Results.Content(AtomXmlWriter.WriteTopicEntry(topic2), AtomXmlContentType);
 
             return ManagementApiErrors.EntityNotFound(entityName);
         });
 
-        // DELETE /{entityName}
-        app.MapDelete("/{entityName}", (string entityName, HttpRequest request) =>
+        app.MapDelete("/{**path}", (HttpRequest request) =>
         {
+            var path = GetRoutePath(request);
             var ns = ResolveNamespace(request, registry);
+
+            if (TryParseRulePath(path, out var topicName, out var subName, out var ruleName))
+            {
+                // DELETE /{topicName}/Subscriptions/{subName}/Rules/{ruleName}
+                var sub = ns.GetSubscription(topicName, subName);
+                if (sub is null)
+                    return ManagementApiErrors.EntityNotFound($"{topicName}/Subscriptions/{subName}");
+
+                if (!sub.RemoveRule(ruleName))
+                    return ManagementApiErrors.EntityNotFound($"{topicName}/Subscriptions/{subName}/Rules/{ruleName}");
+
+                return Results.Ok();
+            }
+
+            if (TryParseSubscriptionPath(path, out topicName, out subName))
+            {
+                // DELETE /{topicName}/Subscriptions/{subName}
+                var topic = ns.GetTopic(topicName);
+                if (topic is null || !topic.RemoveSubscription(subName))
+                    return ManagementApiErrors.EntityNotFound($"{topicName}/Subscriptions/{subName}");
+
+                return Results.Ok();
+            }
+
+            // DELETE /{entityName}
+            var entityName = path;
 
             if (ns.DeleteQueue(entityName) || ns.DeleteTopic(entityName))
                 return Results.Ok();
@@ -98,159 +245,86 @@ public static class ManagementApiEndpoints
             return ManagementApiErrors.EntityNotFound(entityName);
         });
 
-        // ── Subscription CRUD ─────────────────────────────────────────────────
-
-        // PUT /{topicName}/Subscriptions/{subName}
-        app.MapPut("/{topicName}/Subscriptions/{subName}", async (string topicName, string subName, HttpRequest request) =>
-        {
-            var ns = ResolveNamespace(request, registry);
-            var body = await ReadBodyAsync(request);
-            var isUpdate = request.Headers.ContainsKey("If-Match");
-
-            // Ensure topic exists
-            var topic = ns.GetTopic(topicName);
-            if (topic is null)
-                return ManagementApiErrors.EntityNotFound(topicName);
-
-            SubscriptionEntity sub;
-            if (isUpdate)
-            {
-                var existing = ns.GetSubscription(topicName, subName);
-                if (existing is null)
-                    return ManagementApiErrors.EntityNotFound($"{topicName}/Subscriptions/{subName}");
-                sub = existing;
-            }
-            else
-            {
-                sub = topic.AddSubscription(subName);
-            }
-
-            ApplySubscriptionProperties(sub, body, ns);
-
-            var xml = AtomXmlWriter.WriteSubscriptionEntry(sub);
-            return Results.Content(xml, AtomXmlContentType,
-                statusCode: isUpdate ? StatusCodes.Status200OK : StatusCodes.Status201Created);
-        });
-
-        // GET /{topicName}/Subscriptions/{subName}
-        app.MapGet("/{topicName}/Subscriptions/{subName}", (string topicName, string subName, HttpRequest request) =>
-        {
-            var ns = ResolveNamespace(request, registry);
-            var sub = ns.GetSubscription(topicName, subName);
-            if (sub is null)
-                return ManagementApiErrors.EntityNotFound($"{topicName}/Subscriptions/{subName}");
-
-            return Results.Content(AtomXmlWriter.WriteSubscriptionEntry(sub), AtomXmlContentType);
-        });
-
-        // DELETE /{topicName}/Subscriptions/{subName}
-        app.MapDelete("/{topicName}/Subscriptions/{subName}", (string topicName, string subName, HttpRequest request) =>
-        {
-            var ns = ResolveNamespace(request, registry);
-            var topic = ns.GetTopic(topicName);
-            if (topic is null || !topic.RemoveSubscription(subName))
-                return ManagementApiErrors.EntityNotFound($"{topicName}/Subscriptions/{subName}");
-
-            return Results.Ok();
-        });
-
-        // GET /{topicName}/Subscriptions  — list all subscriptions for topic
-        app.MapGet("/{topicName}/Subscriptions", (string topicName, HttpRequest request) =>
-        {
-            var ns = ResolveNamespace(request, registry);
-            var topic = ns.GetTopic(topicName);
-            if (topic is null)
-                return ManagementApiErrors.EntityNotFound(topicName);
-
-            var feed = AtomXmlWriter.WriteSubscriptionFeed(topic.GetSubscriptions());
-            return Results.Content(feed, AtomXmlContentType);
-        });
-
-        // ── Rule CRUD ─────────────────────────────────────────────────────────
-
-        // PUT /{topicName}/Subscriptions/{subName}/Rules/{ruleName}
-        app.MapPut("/{topicName}/Subscriptions/{subName}/Rules/{ruleName}", async (
-            string topicName, string subName, string ruleName, HttpRequest request) =>
-        {
-            var ns = ResolveNamespace(request, registry);
-            var sub = ns.GetSubscription(topicName, subName);
-            if (sub is null)
-                return ManagementApiErrors.EntityNotFound($"{topicName}/Subscriptions/{subName}");
-
-            var body = await ReadBodyAsync(request);
-            var isUpdate = request.Headers.ContainsKey("If-Match");
-
-            RuleProperties props;
-            try
-            {
-                props = AtomXmlReader.ReadRuleProperties(body);
-            }
-            catch
-            {
-                // Fallback: create a default TrueFilter rule with given name
-                props = new RuleProperties(ruleName, FilterType.TrueFilter, null, null, null);
-            }
-
-            var rule = new RuleEntity
-            {
-                Name = ruleName,
-                FilterType = props.FilterType,
-                SqlExpression = props.SqlExpression,
-                CorrelationId = props.CorrelationId,
-                ActionExpression = props.ActionExpression
-            };
-            sub.AddOrUpdateRule(rule);
-
-            var xml = AtomXmlWriter.WriteRuleEntry(rule);
-            return Results.Content(xml, AtomXmlContentType,
-                statusCode: isUpdate ? StatusCodes.Status200OK : StatusCodes.Status201Created);
-        });
-
-        // GET /{topicName}/Subscriptions/{subName}/Rules/{ruleName}
-        app.MapGet("/{topicName}/Subscriptions/{subName}/Rules/{ruleName}", (
-            string topicName, string subName, string ruleName, HttpRequest request) =>
-        {
-            var ns = ResolveNamespace(request, registry);
-            var sub = ns.GetSubscription(topicName, subName);
-            if (sub is null)
-                return ManagementApiErrors.EntityNotFound($"{topicName}/Subscriptions/{subName}");
-
-            var rule = sub.GetRule(ruleName);
-            if (rule is null)
-                return ManagementApiErrors.EntityNotFound($"{topicName}/Subscriptions/{subName}/Rules/{ruleName}");
-
-            return Results.Content(AtomXmlWriter.WriteRuleEntry(rule), AtomXmlContentType);
-        });
-
-        // GET /{topicName}/Subscriptions/{subName}/Rules  — list all rules
-        app.MapGet("/{topicName}/Subscriptions/{subName}/Rules", (
-            string topicName, string subName, HttpRequest request) =>
-        {
-            var ns = ResolveNamespace(request, registry);
-            var sub = ns.GetSubscription(topicName, subName);
-            if (sub is null)
-                return ManagementApiErrors.EntityNotFound($"{topicName}/Subscriptions/{subName}");
-
-            var feed = AtomXmlWriter.WriteRuleFeed(sub.GetRules());
-            return Results.Content(feed, AtomXmlContentType);
-        });
-
-        // DELETE /{topicName}/Subscriptions/{subName}/Rules/{ruleName}
-        app.MapDelete("/{topicName}/Subscriptions/{subName}/Rules/{ruleName}", (
-            string topicName, string subName, string ruleName, HttpRequest request) =>
-        {
-            var ns = ResolveNamespace(request, registry);
-            var sub = ns.GetSubscription(topicName, subName);
-            if (sub is null)
-                return ManagementApiErrors.EntityNotFound($"{topicName}/Subscriptions/{subName}");
-
-            if (!sub.RemoveRule(ruleName))
-                return ManagementApiErrors.EntityNotFound($"{topicName}/Subscriptions/{subName}/Rules/{ruleName}");
-
-            return Results.Ok();
-        });
-
         return app;
+    }
+
+    // ── Path parsing ─────────────────────────────────────────────────────────
+    // Entity names can contain '/' (e.g. MassTransit's "Namespace/EventType"),
+    // so we split on the literal "/Subscriptions/" and "/Rules/" segments.
+
+    private static string GetRoutePath(HttpRequest request)
+    {
+        return request.RouteValues["path"]?.ToString() ?? string.Empty;
+    }
+
+    /// <summary>
+    /// Matches: {topicName}/Subscriptions/{subName}/Rules/{ruleName}
+    /// </summary>
+    private static bool TryParseRulePath(string path,
+        out string topicName, out string subName, out string ruleName)
+    {
+        topicName = subName = ruleName = string.Empty;
+        var subIdx = path.IndexOf("/Subscriptions/", StringComparison.OrdinalIgnoreCase);
+        if (subIdx < 0) return false;
+
+        var afterSub = path[(subIdx + "/Subscriptions/".Length)..];
+        var rulesIdx = afterSub.IndexOf("/Rules/", StringComparison.OrdinalIgnoreCase);
+        if (rulesIdx < 0) return false;
+
+        topicName = path[..subIdx];
+        subName = afterSub[..rulesIdx];
+        ruleName = afterSub[(rulesIdx + "/Rules/".Length)..];
+        return topicName.Length > 0 && subName.Length > 0 && ruleName.Length > 0;
+    }
+
+    /// <summary>
+    /// Matches: {topicName}/Subscriptions/{subName}/Rules
+    /// </summary>
+    private static bool TryParseRuleListPath(string path,
+        out string topicName, out string subName)
+    {
+        topicName = subName = string.Empty;
+        var subIdx = path.IndexOf("/Subscriptions/", StringComparison.OrdinalIgnoreCase);
+        if (subIdx < 0) return false;
+
+        var afterSub = path[(subIdx + "/Subscriptions/".Length)..];
+        if (!afterSub.EndsWith("/Rules", StringComparison.OrdinalIgnoreCase)) return false;
+
+        topicName = path[..subIdx];
+        subName = afterSub[..^"/Rules".Length];
+        return topicName.Length > 0 && subName.Length > 0;
+    }
+
+    /// <summary>
+    /// Matches: {topicName}/Subscriptions/{subName}
+    /// (but NOT .../Rules or .../Rules/{ruleName})
+    /// </summary>
+    private static bool TryParseSubscriptionPath(string path,
+        out string topicName, out string subName)
+    {
+        topicName = subName = string.Empty;
+        var subIdx = path.IndexOf("/Subscriptions/", StringComparison.OrdinalIgnoreCase);
+        if (subIdx < 0) return false;
+
+        var afterSub = path[(subIdx + "/Subscriptions/".Length)..];
+        // Must not contain /Rules
+        if (afterSub.Contains("/Rules", StringComparison.OrdinalIgnoreCase)) return false;
+
+        topicName = path[..subIdx];
+        subName = afterSub;
+        return topicName.Length > 0 && subName.Length > 0;
+    }
+
+    /// <summary>
+    /// Matches: {topicName}/Subscriptions
+    /// </summary>
+    private static bool TryParseSubscriptionListPath(string path, out string topicName)
+    {
+        topicName = string.Empty;
+        if (!path.EndsWith("/Subscriptions", StringComparison.OrdinalIgnoreCase)) return false;
+
+        topicName = path[..^"/Subscriptions".Length];
+        return topicName.Length > 0;
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────────
