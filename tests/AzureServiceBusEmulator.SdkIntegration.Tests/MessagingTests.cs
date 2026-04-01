@@ -20,7 +20,7 @@ public class MessagingTests : IAsyncLifetime
 
     private async Task<Connection> OpenConnectionAsync()
     {
-        var address = new Address("localhost", _fixture.AmqpPort, null, null, "/", "AMQP");
+        var address = new Address("localhost", _fixture.PublicPort, null, null, "/", "AMQP");
         return await Connection.Factory.CreateAsync(address);
     }
 

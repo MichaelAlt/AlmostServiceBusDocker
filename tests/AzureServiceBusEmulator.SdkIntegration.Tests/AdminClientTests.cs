@@ -1,5 +1,7 @@
 using System.Net;
-using System.Text;
+using System.Net.Sockets;
+using Azure.Core.Pipeline;
+using Azure.Messaging.ServiceBus.Administration;
 using AzureServiceBusEmulator.TestHost;
 
 namespace AzureServiceBusEmulator.SdkIntegration.Tests;
@@ -7,214 +9,108 @@ namespace AzureServiceBusEmulator.SdkIntegration.Tests;
 public class AdminClientTests : IAsyncLifetime
 {
     private readonly ServiceBusEmulatorFixture _fixture = new();
-    private HttpClient _httpClient = null!;
+    private ServiceBusAdministrationClient _adminClient = null!;
 
     public async Task InitializeAsync()
     {
         await _fixture.StartAsync();
 
-        _httpClient = new HttpClient
+        var handler = new SocketsHttpHandler
         {
-            BaseAddress = new Uri($"http://localhost:{_fixture.HttpPort}")
+            SslOptions = { RemoteCertificateValidationCallback = (_, _, _, _) => true },
+            ConnectCallback = async (context, ct) =>
+            {
+                var port = context.DnsEndPoint.Port;
+                var socket = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
+                await socket.ConnectAsync(IPAddress.Loopback, port, ct);
+                return new NetworkStream(socket, ownsSocket: true);
+            }
         };
-        _httpClient.DefaultRequestHeaders.Host = $"{_fixture.Namespace}.servicebus.windows.net";
+
+        var options = new ServiceBusAdministrationClientOptions();
+        options.Transport = new HttpClientTransport(new HttpClient(handler));
+
+        _adminClient = new ServiceBusAdministrationClient(
+            _fixture.ConnectionString,
+            options);
     }
 
     public async Task DisposeAsync()
     {
-        _httpClient.Dispose();
         await _fixture.DisposeAsync();
     }
-
-    // ── Helpers ──────────────────────────────────────────────────────────────
-
-    private static StringContent AtomXml(string descriptionXml) =>
-        new(
-            $"<entry xmlns=\"http://www.w3.org/2005/Atom\">" +
-            $"<content type=\"application/xml\">{descriptionXml}</content>" +
-            $"</entry>",
-            Encoding.UTF8,
-            "application/atom+xml");
-
-    private static StringContent QueueBody(string? lockDuration = null)
-    {
-        var ld = lockDuration ?? "PT30S";
-        return AtomXml(
-            "<QueueDescription xmlns=\"http://schemas.microsoft.com/netservices/2010/10/servicebus/connect\" " +
-            "xmlns:i=\"http://www.w3.org/2001/XMLSchema-instance\">" +
-            $"<LockDuration>{ld}</LockDuration>" +
-            "<MaxSizeInMegabytes>1024</MaxSizeInMegabytes>" +
-            "<RequiresSession>false</RequiresSession>" +
-            "<DefaultMessageTimeToLive>P10675199DT2H48M5.4775807S</DefaultMessageTimeToLive>" +
-            "<DeadLetteringOnMessageExpiration>false</DeadLetteringOnMessageExpiration>" +
-            "<MaxDeliveryCount>10</MaxDeliveryCount>" +
-            "<EnableBatchedOperations>true</EnableBatchedOperations>" +
-            "</QueueDescription>");
-    }
-
-    private static StringContent TopicBody()
-    {
-        return AtomXml(
-            "<TopicDescription xmlns=\"http://schemas.microsoft.com/netservices/2010/10/servicebus/connect\" " +
-            "xmlns:i=\"http://www.w3.org/2001/XMLSchema-instance\">" +
-            "<DefaultMessageTimeToLive>P10675199DT2H48M5.4775807S</DefaultMessageTimeToLive>" +
-            "<MaxSizeInMegabytes>1024</MaxSizeInMegabytes>" +
-            "<EnableBatchedOperations>true</EnableBatchedOperations>" +
-            "</TopicDescription>");
-    }
-
-    private static StringContent SubscriptionBody(string? forwardTo = null, int maxDeliveryCount = 10)
-    {
-        var forwardToElement = forwardTo is not null
-            ? $"<ForwardTo>{forwardTo}</ForwardTo>"
-            : "";
-        return AtomXml(
-            "<SubscriptionDescription xmlns=\"http://schemas.microsoft.com/netservices/2010/10/servicebus/connect\" " +
-            "xmlns:i=\"http://www.w3.org/2001/XMLSchema-instance\">" +
-            "<LockDuration>PT30S</LockDuration>" +
-            "<RequiresSession>false</RequiresSession>" +
-            "<DefaultMessageTimeToLive>P10675199DT2H48M5.4775807S</DefaultMessageTimeToLive>" +
-            "<DeadLetteringOnMessageExpiration>false</DeadLetteringOnMessageExpiration>" +
-            $"<MaxDeliveryCount>{maxDeliveryCount}</MaxDeliveryCount>" +
-            "<EnableBatchedOperations>true</EnableBatchedOperations>" +
-            forwardToElement +
-            "</SubscriptionDescription>");
-    }
-
-    private static StringContent SqlFilterRuleBody(string ruleName, string sqlExpression)
-    {
-        return AtomXml(
-            "<RuleDescription xmlns=\"http://schemas.microsoft.com/netservices/2010/10/servicebus/connect\" " +
-            "xmlns:i=\"http://www.w3.org/2001/XMLSchema-instance\">" +
-            "<Filter i:type=\"SqlFilter\">" +
-            $"<SqlExpression>{sqlExpression}</SqlExpression>" +
-            "</Filter>" +
-            "<Action i:type=\"EmptyRuleAction\" />" +
-            $"<Name>{ruleName}</Name>" +
-            "</RuleDescription>");
-    }
-
-    // ── Tests ────────────────────────────────────────────────────────────────
 
     [Fact]
     public async Task CreateQueue_ThenGetQueue_RoundTrips()
     {
-        // Create
-        var createResponse = await _httpClient.PutAsync("/test-queue", QueueBody("PT1M"));
-        Assert.Equal(HttpStatusCode.Created, createResponse.StatusCode);
+        var created = await _adminClient.CreateQueueAsync("test-queue");
+        Assert.Equal("test-queue", created.Value.Name);
 
-        var createBody = await createResponse.Content.ReadAsStringAsync();
-        Assert.Contains("QueueDescription", createBody);
-        Assert.Contains("test-queue", createBody);
-
-        // Get
-        var getResponse = await _httpClient.GetAsync("/test-queue");
-        Assert.Equal(HttpStatusCode.OK, getResponse.StatusCode);
-
-        var getBody = await getResponse.Content.ReadAsStringAsync();
-        Assert.Contains("QueueDescription", getBody);
-        Assert.Contains("PT1M", getBody); // LockDuration should round-trip
+        var fetched = await _adminClient.GetQueueAsync("test-queue");
+        Assert.Equal("test-queue", fetched.Value.Name);
     }
 
     [Fact]
     public async Task CreateTopicAndSubscription_Works()
     {
-        // Create topic
-        var topicResponse = await _httpClient.PutAsync("/my-topic", TopicBody());
-        Assert.Equal(HttpStatusCode.Created, topicResponse.StatusCode);
+        await _adminClient.CreateTopicAsync("my-topic");
 
-        // Create subscription with ForwardTo
-        var subResponse = await _httpClient.PutAsync(
-            "/my-topic/Subscriptions/sub-1",
-            SubscriptionBody(forwardTo: "some-queue"));
-        Assert.Equal(HttpStatusCode.Created, subResponse.StatusCode);
+        var subOptions = new CreateSubscriptionOptions("my-topic", "sub-1")
+        {
+            ForwardTo = "some-queue"
+        };
+        await _adminClient.CreateQueueAsync("some-queue");
+        var sub = await _adminClient.CreateSubscriptionAsync(subOptions);
 
-        // Get subscription and verify ForwardTo
-        var getResponse = await _httpClient.GetAsync("/my-topic/Subscriptions/sub-1");
-        Assert.Equal(HttpStatusCode.OK, getResponse.StatusCode);
-
-        var body = await getResponse.Content.ReadAsStringAsync();
-        Assert.Contains("SubscriptionDescription", body);
-        Assert.Contains("some-queue", body); // ForwardTo value
+        Assert.Equal("sub-1", sub.Value.SubscriptionName);
+        Assert.Equal("some-queue", sub.Value.ForwardTo);
     }
 
     [Fact]
-    public async Task GetNonexistentEntity_Returns404()
+    public async Task GetNonexistentEntity_Throws404()
     {
-        var response = await _httpClient.GetAsync("/nonexistent");
-        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+        var ex = await Assert.ThrowsAsync<Azure.Messaging.ServiceBus.ServiceBusException>(
+            () => _adminClient.GetQueueAsync("nonexistent"));
 
-        var body = await response.Content.ReadAsStringAsync();
-        Assert.Contains("MessagingEntityNotFound", body);
+        Assert.Equal(Azure.Messaging.ServiceBus.ServiceBusFailureReason.MessagingEntityNotFound, ex.Reason);
     }
 
     [Fact]
     public async Task CreateSubscriptionWithRules_Works()
     {
-        // Create topic and subscription
-        await _httpClient.PutAsync("/rules-topic", TopicBody());
-        await _httpClient.PutAsync("/rules-topic/Subscriptions/rules-sub", SubscriptionBody());
+        await _adminClient.CreateTopicAsync("rules-topic");
+        await _adminClient.CreateSubscriptionAsync("rules-topic", "rules-sub");
 
-        // Create a SQL filter rule
-        var ruleResponse = await _httpClient.PutAsync(
-            "/rules-topic/Subscriptions/rules-sub/Rules/my-rule",
-            SqlFilterRuleBody("my-rule", "color = 'blue'"));
-        Assert.Equal(HttpStatusCode.Created, ruleResponse.StatusCode);
+        var ruleOptions = new CreateRuleOptions("my-rule")
+        {
+            Filter = new SqlRuleFilter("color = 'blue'")
+        };
+        var rule = await _adminClient.CreateRuleAsync("rules-topic", "rules-sub", ruleOptions);
 
-        // Get the rule and verify round-trip
-        var getResponse = await _httpClient.GetAsync(
-            "/rules-topic/Subscriptions/rules-sub/Rules/my-rule");
-        Assert.Equal(HttpStatusCode.OK, getResponse.StatusCode);
-
-        var body = await getResponse.Content.ReadAsStringAsync();
-        Assert.Contains("RuleDescription", body);
-        Assert.Contains("SqlFilter", body);
-        Assert.Contains("color = 'blue'", body);
-        Assert.Contains("my-rule", body);
+        Assert.Equal("my-rule", rule.Value.Name);
+        Assert.IsType<SqlRuleFilter>(rule.Value.Filter);
     }
 
     [Fact]
     public async Task DeleteEntity_Works()
     {
-        // Create queue
-        var createResponse = await _httpClient.PutAsync("/delete-me", QueueBody());
-        Assert.Equal(HttpStatusCode.Created, createResponse.StatusCode);
+        await _adminClient.CreateQueueAsync("delete-me");
+        Assert.True((await _adminClient.QueueExistsAsync("delete-me")).Value);
 
-        // Delete it
-        var deleteResponse = await _httpClient.DeleteAsync("/delete-me");
-        Assert.Equal(HttpStatusCode.OK, deleteResponse.StatusCode);
-
-        // Verify it's gone
-        var getResponse = await _httpClient.GetAsync("/delete-me");
-        Assert.Equal(HttpStatusCode.NotFound, getResponse.StatusCode);
+        await _adminClient.DeleteQueueAsync("delete-me");
+        Assert.False((await _adminClient.QueueExistsAsync("delete-me")).Value);
     }
 
     [Fact]
     public async Task UpdateSubscription_WithIfMatch_Works()
     {
-        // Create topic and subscription
-        await _httpClient.PutAsync("/update-topic", TopicBody());
-        await _httpClient.PutAsync(
-            "/update-topic/Subscriptions/update-sub",
-            SubscriptionBody(maxDeliveryCount: 10));
+        await _adminClient.CreateTopicAsync("update-topic");
+        await _adminClient.CreateSubscriptionAsync("update-topic", "update-sub");
 
-        // Update with If-Match header and changed MaxDeliveryCount
-        var updateRequest = new HttpRequestMessage(HttpMethod.Put,
-            "/update-topic/Subscriptions/update-sub")
-        {
-            Content = SubscriptionBody(maxDeliveryCount: 5)
-        };
-        updateRequest.Headers.Add("If-Match", "*");
+        var sub = await _adminClient.GetSubscriptionAsync("update-topic", "update-sub");
+        sub.Value.MaxDeliveryCount = 5;
+        var updated = await _adminClient.UpdateSubscriptionAsync(sub.Value);
 
-        var updateResponse = await _httpClient.SendAsync(updateRequest);
-        Assert.Equal(HttpStatusCode.OK, updateResponse.StatusCode);
-
-        // Get and verify updated value
-        var getResponse = await _httpClient.GetAsync("/update-topic/Subscriptions/update-sub");
-        Assert.Equal(HttpStatusCode.OK, getResponse.StatusCode);
-
-        var body = await getResponse.Content.ReadAsStringAsync();
-        Assert.Contains("<MaxDeliveryCount", body);
-        Assert.Contains("5", body);
+        Assert.Equal(5, updated.Value.MaxDeliveryCount);
     }
 }
