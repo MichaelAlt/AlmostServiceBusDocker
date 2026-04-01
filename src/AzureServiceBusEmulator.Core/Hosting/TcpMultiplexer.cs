@@ -74,11 +74,8 @@ public class TcpMultiplexer
                 return;
             }
 
-            Console.WriteLine($"[MUX] Connection from {client.Client.RemoteEndPoint}, first byte=0x{firstByte[0]:X2}");
-
             if (firstByte[0] == AmqpByte)
             {
-                Console.WriteLine("[MUX] Routing: plain AMQP");
                 backend = await ConnectToBackend(_amqpPort, ct);
                 var backendStream = backend.GetStream();
                 await backendStream.WriteAsync(firstByte.AsMemory(0, 1), ct);
@@ -86,18 +83,16 @@ public class TcpMultiplexer
             }
             else if (firstByte[0] == TlsByte && _certificate is not null)
             {
-                Console.WriteLine("[MUX] Routing: TLS — terminating...");
                 await HandleTlsConnection(client, stream, firstByte, ct);
             }
             else
             {
-                Console.WriteLine($"[MUX] Unknown protocol byte 0x{firstByte[0]:X2}, closing");
                 client.Dispose();
             }
         }
-        catch (Exception ex)
+        catch
         {
-            Console.WriteLine($"[MUX] Error: {ex.GetType().Name}: {ex.Message}");
+            // Connection error — just clean up
         }
         finally
         {
@@ -126,26 +121,22 @@ public class TcpMultiplexer
                 ],
             }, ct);
         }
-        catch (Exception ex)
+        catch
         {
-            Console.WriteLine($"[MUX] TLS handshake failed: {ex.GetType().Name}: {ex.Message}");
             sslStream.Dispose();
             return;
         }
 
         int backendPort;
         var alpn = sslStream.NegotiatedApplicationProtocol;
-        Console.WriteLine($"[MUX] TLS handshake OK, ALPN={alpn}, Protocol={sslStream.SslProtocol}");
 
         if (alpn == new SslApplicationProtocol("amqp"))
         {
             backendPort = _amqpPort;
-            Console.WriteLine("[MUX] TLS inner protocol: AMQP (via ALPN)");
         }
         else if (alpn == SslApplicationProtocol.Http2 || alpn == SslApplicationProtocol.Http11)
         {
             backendPort = _httpPort;
-            Console.WriteLine($"[MUX] TLS inner protocol: HTTP (via ALPN {alpn})");
         }
         else
         {
@@ -159,7 +150,6 @@ public class TcpMultiplexer
             }
 
             backendPort = innerByte[0] == AmqpByte ? _amqpPort : _httpPort;
-            Console.WriteLine($"[MUX] TLS inner protocol: {(innerByte[0] == AmqpByte ? "AMQP" : "HTTP")} (via byte peek 0x{innerByte[0]:X2})");
 
             // Connect to backend and send the peeked inner byte
             var be = await ConnectToBackend(backendPort, ct);
