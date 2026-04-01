@@ -2,6 +2,7 @@ using System.Net;
 using System.Net.Sockets;
 using System.Text;
 using AzureServiceBusEmulator.Core.Hosting;
+using AzureServiceBusEmulator.TestHost;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.Extensions.Logging;
@@ -68,15 +69,15 @@ public class TcpMultiplexerTests : IAsyncDisposable
     {
         var publicPort = GetFreePort();
         var amqpPort = GetFreePort();
-        var httpsPort = GetFreePort();
+        var httpPort = GetFreePort();
 
         _ = StartEchoServer(amqpPort, "AMQP", _cts.Token);
-        _ = StartEchoServer(httpsPort, "HTTPS", _cts.Token);
+        _ = StartEchoServer(httpPort, "HTTP", _cts.Token);
 
-        var multiplexer = new TcpMultiplexer(publicPort, amqpPort, httpsPort);
+        var multiplexer = new TcpMultiplexer(publicPort, amqpPort, httpPort);
         _ = multiplexer.StartAsync(_cts.Token);
 
-        await Task.Delay(100); // let servers bind
+        await Task.Delay(100);
 
         using var client = new TcpClient();
         await client.ConnectAsync(IPAddress.Loopback, publicPort);
@@ -96,47 +97,16 @@ public class TcpMultiplexerTests : IAsyncDisposable
     }
 
     [Fact]
-    public async Task Routes_TlsConnection_ToHttpsBackend()
-    {
-        var publicPort = GetFreePort();
-        var amqpPort = GetFreePort();
-        var httpsPort = GetFreePort();
-
-        _ = StartEchoServer(amqpPort, "AMQP", _cts.Token);
-        _ = StartEchoServer(httpsPort, "HTTPS", _cts.Token);
-
-        var multiplexer = new TcpMultiplexer(publicPort, amqpPort, httpsPort);
-        _ = multiplexer.StartAsync(_cts.Token);
-
-        await Task.Delay(100);
-
-        using var client = new TcpClient();
-        await client.ConnectAsync(IPAddress.Loopback, publicPort);
-        var stream = client.GetStream();
-
-        // Send data starting with 0x16 (TLS ClientHello)
-        var payload = new byte[] { 0x16, 0x03, 0x01, 0x00, 0x05, 0x01, 0x02, 0x03, 0x04, 0x05 };
-        await stream.WriteAsync(payload);
-        client.Client.Shutdown(SocketShutdown.Send);
-
-        var buffer = new byte[1024];
-        var read = await stream.ReadAsync(buffer);
-        var response = Encoding.UTF8.GetString(buffer, 0, read);
-
-        Assert.StartsWith("HTTPS:", response);
-    }
-
-    [Fact]
     public async Task Closes_Connection_OnUnknownProtocol()
     {
         var publicPort = GetFreePort();
         var amqpPort = GetFreePort();
-        var httpsPort = GetFreePort();
+        var httpPort = GetFreePort();
 
         _ = StartEchoServer(amqpPort, "AMQP", _cts.Token);
-        _ = StartEchoServer(httpsPort, "HTTPS", _cts.Token);
+        _ = StartEchoServer(httpPort, "HTTP", _cts.Token);
 
-        var multiplexer = new TcpMultiplexer(publicPort, amqpPort, httpsPort);
+        var multiplexer = new TcpMultiplexer(publicPort, amqpPort, httpPort);
         _ = multiplexer.StartAsync(_cts.Token);
 
         await Task.Delay(100);
@@ -145,38 +115,31 @@ public class TcpMultiplexerTests : IAsyncDisposable
         await client.ConnectAsync(IPAddress.Loopback, publicPort);
         var stream = client.GetStream();
 
-        // Send data starting with an unknown byte
         var payload = new byte[] { 0xFF, 0x01, 0x02 };
         await stream.WriteAsync(payload);
 
-        // Connection should be closed by multiplexer.
-        // Depending on timing, this manifests as either 0 bytes read (graceful close)
-        // or an IOException/SocketException (connection reset).
         var buffer = new byte[1024];
         try
         {
             var read = await stream.ReadAsync(buffer);
-            Assert.Equal(0, read); // connection closed gracefully
+            Assert.Equal(0, read);
         }
         catch (IOException)
         {
-            // Connection was reset by the remote host — also acceptable
+            // Connection reset — also acceptable on Windows
         }
     }
 
     [Fact]
-    public async Task Routes_RealHttps_ToKestrelBackend()
+    public async Task Routes_Https_ThroughTlsTermination_ToPlainHttpBackend()
     {
         var publicPort = GetFreePort();
         var amqpPort = GetFreePort();
-        var httpsPort = GetFreePort();
+        var httpPort = GetFreePort();
 
-        // Start a real Kestrel HTTPS server on the internal port
+        // Kestrel serves plain HTTP (multiplexer handles TLS)
         var builder = WebApplication.CreateBuilder();
-        builder.WebHost.ConfigureKestrel(k =>
-        {
-            k.ListenLocalhost(httpsPort, o => o.UseHttps());
-        });
+        builder.WebHost.ConfigureKestrel(k => k.ListenLocalhost(httpPort));
         builder.Logging.ClearProviders();
         var app = builder.Build();
         app.MapGet("/health", () => "ok");
@@ -184,12 +147,13 @@ public class TcpMultiplexerTests : IAsyncDisposable
 
         try
         {
-            var multiplexer = new TcpMultiplexer(publicPort, amqpPort, httpsPort);
+            var cert = ServiceBusEmulatorFixture.LoadDevCert();
+            var multiplexer = new TcpMultiplexer(publicPort, amqpPort, httpPort, cert);
             _ = multiplexer.StartAsync(_cts.Token);
 
             await Task.Delay(100);
 
-            // Make an HTTPS request through the multiplexer
+            // Client sends HTTPS — multiplexer terminates TLS, proxies HTTP to Kestrel
             var handler = new HttpClientHandler
             {
                 ServerCertificateCustomValidationCallback = (_, _, _, _) => true

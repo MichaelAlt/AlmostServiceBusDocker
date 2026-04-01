@@ -25,6 +25,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\AzureServiceBusEmulator.Core\AzureServiceBusEmulator.Core.csproj" />
+    <ProjectReference Include="..\..\src\AzureServiceBusEmulator.TestHost\AzureServiceBusEmulator.TestHost.csproj" />
   </ItemGroup>
 
 </Project>

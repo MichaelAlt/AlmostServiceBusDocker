@@ -1,4 +1,4 @@
-// src/AzureServiceBusEmulator.TestHost/ServiceBusEmulatorFixture.cs
+using System.Security.Cryptography.X509Certificates;
 using AzureServiceBusEmulator.Core.Amqp;
 using AzureServiceBusEmulator.Core.Broker;
 using AzureServiceBusEmulator.Core.Hosting;
@@ -40,11 +40,12 @@ public class ServiceBusEmulatorFixture : IAsyncDisposable
         AmqpPort = GetFreePort();
         HttpPort = GetFreePort();
 
-        // 1. Start Kestrel with HTTPS on internal port
+        // 1. Start Kestrel with plain HTTP on internal port
+        //    (TLS is terminated by the multiplexer, not Kestrel)
         var builder = WebApplication.CreateBuilder();
         builder.WebHost.ConfigureKestrel(k =>
         {
-            k.ListenLocalhost(HttpPort, o => o.UseHttps());
+            k.ListenLocalhost(HttpPort);
         });
         builder.Logging.ClearProviders();
 
@@ -56,9 +57,10 @@ public class ServiceBusEmulatorFixture : IAsyncDisposable
         _amqpServer = new AmqpServer(new AmqpServerOptions { Port = AmqpPort }, _registry);
         _amqpServer.Start();
 
-        // 3. Start multiplexer on public port
+        // 3. Start multiplexer on public port with TLS termination
+        var cert = LoadDevCert();
         _multiplexerCts = new CancellationTokenSource();
-        _multiplexer = new TcpMultiplexer(PublicPort, AmqpPort, HttpPort);
+        _multiplexer = new TcpMultiplexer(PublicPort, AmqpPort, HttpPort, cert);
         _ = _multiplexer.StartAsync(_multiplexerCts.Token);
     }
 
@@ -83,6 +85,20 @@ public class ServiceBusEmulatorFixture : IAsyncDisposable
     public NamespaceContext GetNamespaceContext() => _registry.GetOrCreate(_namespace);
 
     public NamespaceContext GetDefaultNamespaceContext() => _registry.GetOrCreate("default");
+
+    public static X509Certificate2 LoadDevCert()
+    {
+        using var store = new X509Store(StoreName.My, StoreLocation.CurrentUser);
+        store.Open(OpenFlags.ReadOnly);
+        // OID 1.3.6.1.4.1.311.84.1.1 identifies ASP.NET Core dev certs
+        var certs = store.Certificates.Find(
+            X509FindType.FindByExtension, "1.3.6.1.4.1.311.84.1.1", validOnly: false);
+        if (certs.Count == 0)
+            throw new InvalidOperationException(
+                "ASP.NET HTTPS development certificate not found. " +
+                "Run 'dotnet dev-certs https --trust' to generate and trust the certificate.");
+        return new X509Certificate2(certs[0]);
+    }
 
     private static int GetFreePort()
     {
