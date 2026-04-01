@@ -57,14 +57,14 @@ public static class AtomXmlReader
     {
         var desc = ParseDescription(xml, Sb + "QueueDescription");
         return new QueueProperties(
-            LockDuration: ParseTimeSpan(desc, "LockDuration"),
-            MaxSizeInMegabytes: ParseLong(desc, "MaxSizeInMegabytes"),
-            RequiresSession: ParseBool(desc, "RequiresSession"),
-            DefaultMessageTimeToLive: ParseTimeSpan(desc, "DefaultMessageTimeToLive"),
-            DeadLetteringOnMessageExpiration: ParseBool(desc, "DeadLetteringOnMessageExpiration"),
-            MaxDeliveryCount: ParseInt(desc, "MaxDeliveryCount"),
-            EnableBatchedOperations: ParseBool(desc, "EnableBatchedOperations"),
-            ForwardTo: ParseOptionalString(desc, "ForwardTo"),
+            LockDuration: ParseOptionalTimeSpan(desc, "LockDuration") ?? TimeSpan.FromSeconds(30),
+            MaxSizeInMegabytes: ParseOptionalLong(desc, "MaxSizeInMegabytes") ?? 1024,
+            RequiresSession: ParseOptionalBool(desc, "RequiresSession") ?? false,
+            DefaultMessageTimeToLive: ParseOptionalTimeSpan(desc, "DefaultMessageTimeToLive") ?? TimeSpan.MaxValue,
+            DeadLetteringOnMessageExpiration: ParseOptionalBool(desc, "DeadLetteringOnMessageExpiration") ?? false,
+            MaxDeliveryCount: ParseOptionalInt(desc, "MaxDeliveryCount") ?? 10,
+            EnableBatchedOperations: ParseOptionalBool(desc, "EnableBatchedOperations") ?? true,
+            ForwardTo: NormalizeForwardTo(ParseOptionalString(desc, "ForwardTo")),
             UserMetadata: ParseOptionalString(desc, "UserMetadata"));
     }
 
@@ -72,9 +72,9 @@ public static class AtomXmlReader
     {
         var desc = ParseDescription(xml, Sb + "TopicDescription");
         return new TopicProperties(
-            DefaultMessageTimeToLive: ParseTimeSpan(desc, "DefaultMessageTimeToLive"),
-            MaxSizeInMegabytes: ParseLong(desc, "MaxSizeInMegabytes"),
-            EnableBatchedOperations: ParseBool(desc, "EnableBatchedOperations"),
+            DefaultMessageTimeToLive: ParseOptionalTimeSpan(desc, "DefaultMessageTimeToLive") ?? TimeSpan.MaxValue,
+            MaxSizeInMegabytes: ParseOptionalLong(desc, "MaxSizeInMegabytes") ?? 1024,
+            EnableBatchedOperations: ParseOptionalBool(desc, "EnableBatchedOperations") ?? true,
             UserMetadata: ParseOptionalString(desc, "UserMetadata"));
     }
 
@@ -82,13 +82,13 @@ public static class AtomXmlReader
     {
         var desc = ParseDescription(xml, Sb + "SubscriptionDescription");
         return new SubscriptionProperties(
-            LockDuration: ParseTimeSpan(desc, "LockDuration"),
-            RequiresSession: ParseBool(desc, "RequiresSession"),
-            DefaultMessageTimeToLive: ParseTimeSpan(desc, "DefaultMessageTimeToLive"),
-            DeadLetteringOnMessageExpiration: ParseBool(desc, "DeadLetteringOnMessageExpiration"),
-            MaxDeliveryCount: ParseInt(desc, "MaxDeliveryCount"),
-            EnableBatchedOperations: ParseBool(desc, "EnableBatchedOperations"),
-            ForwardTo: ParseOptionalString(desc, "ForwardTo"),
+            LockDuration: ParseOptionalTimeSpan(desc, "LockDuration") ?? TimeSpan.FromSeconds(30),
+            RequiresSession: ParseOptionalBool(desc, "RequiresSession") ?? false,
+            DefaultMessageTimeToLive: ParseOptionalTimeSpan(desc, "DefaultMessageTimeToLive") ?? TimeSpan.MaxValue,
+            DeadLetteringOnMessageExpiration: ParseOptionalBool(desc, "DeadLetteringOnMessageExpiration") ?? false,
+            MaxDeliveryCount: ParseOptionalInt(desc, "MaxDeliveryCount") ?? 10,
+            EnableBatchedOperations: ParseOptionalBool(desc, "EnableBatchedOperations") ?? true,
+            ForwardTo: NormalizeForwardTo(ParseOptionalString(desc, "ForwardTo")),
             UserMetadata: ParseOptionalString(desc, "UserMetadata"));
     }
 
@@ -166,5 +166,50 @@ public static class AtomXmlReader
         if (value == "P10675199DT2H48M5.4775807S")
             return TimeSpan.MaxValue;
         return XmlConvert.ToTimeSpan(value);
+    }
+
+    private static int? ParseOptionalInt(XElement parent, string localName)
+    {
+        var value = ParseOptionalString(parent, localName);
+        return value is null ? null : int.Parse(value);
+    }
+
+    private static long? ParseOptionalLong(XElement parent, string localName)
+    {
+        var value = ParseOptionalString(parent, localName);
+        return value is null ? null : long.Parse(value);
+    }
+
+    private static bool? ParseOptionalBool(XElement parent, string localName)
+    {
+        var value = ParseOptionalString(parent, localName);
+        return value is null ? null : bool.Parse(value);
+    }
+
+    private static TimeSpan? ParseOptionalTimeSpan(XElement parent, string localName)
+    {
+        var value = ParseOptionalString(parent, localName);
+        if (value is null) return null;
+        if (value == "P10675199DT2H48M5.4775807S")
+            return TimeSpan.MaxValue;
+        return XmlConvert.ToTimeSpan(value);
+    }
+
+    /// <summary>
+    /// The Azure SDK sends ForwardTo as a full URI (e.g. "sb://ns.servicebus.windows.net/queue-name"
+    /// or "http://ns.localhost/queue-name"). This normalizes it to just the entity name.
+    /// </summary>
+    private static string? NormalizeForwardTo(string? forwardTo)
+    {
+        if (forwardTo is null) return null;
+
+        // If it looks like a URI, extract the path (entity name)
+        if (Uri.TryCreate(forwardTo, UriKind.Absolute, out var uri))
+        {
+            var path = uri.AbsolutePath.TrimStart('/');
+            return string.IsNullOrEmpty(path) ? forwardTo : path;
+        }
+
+        return forwardTo;
     }
 }
