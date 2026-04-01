@@ -1,0 +1,120 @@
+using System.Collections.Concurrent;
+
+namespace AzureServiceBusEmulator.Core.Broker;
+
+/// <summary>
+/// Holds all entities (queues and topics) for a single Service Bus namespace.
+/// All dictionaries are case-insensitive to match Azure Service Bus behaviour.
+/// </summary>
+public sealed class NamespaceContext
+{
+    private static readonly StringComparer KeyComparer = StringComparer.OrdinalIgnoreCase;
+
+    private readonly ConcurrentDictionary<string, QueueEntity> _queues = new(KeyComparer);
+    private readonly ConcurrentDictionary<string, TopicEntity> _topics = new(KeyComparer);
+    private long _sequenceNumber;
+
+    public NamespaceContext(string name)
+    {
+        Name = name;
+    }
+
+    public string Name { get; }
+
+    // ── Queue methods ────────────────────────────────────────────────────────
+
+    public QueueEntity CreateQueue(string name) =>
+        _queues.GetOrAdd(name, n => new QueueEntity(n));
+
+    public QueueEntity? GetQueue(string name) =>
+        _queues.GetValueOrDefault(name);
+
+    public IReadOnlyCollection<QueueEntity> GetQueues() =>
+        _queues.Values.ToList();
+
+    public bool DeleteQueue(string name) =>
+        _queues.TryRemove(name, out _);
+
+    // ── Topic methods ────────────────────────────────────────────────────────
+
+    public TopicEntity CreateTopic(string name) =>
+        _topics.GetOrAdd(name, n => new TopicEntity(n));
+
+    public TopicEntity? GetTopic(string name) =>
+        _topics.GetValueOrDefault(name);
+
+    public IReadOnlyCollection<TopicEntity> GetTopics() =>
+        _topics.Values.ToList();
+
+    public bool DeleteTopic(string name) =>
+        _topics.TryRemove(name, out _);
+
+    // ── Subscription convenience ─────────────────────────────────────────────
+
+    /// <summary>
+    /// Ensures the topic exists, then adds (or returns) a subscription on it.
+    /// When <paramref name="forwardTo"/> is provided the subscription's
+    /// <see cref="SubscriptionEntity.ForwardTo"/> and
+    /// <see cref="SubscriptionEntity.ResolvedForwardToQueue"/> are wired up.
+    /// </summary>
+    public SubscriptionEntity CreateSubscription(string topicName, string subName, string? forwardTo = null)
+    {
+        var topic = _topics.GetOrAdd(topicName, n => new TopicEntity(n));
+        var sub = topic.AddSubscription(subName);
+
+        if (forwardTo is not null)
+        {
+            sub.ForwardTo = forwardTo;
+            sub.ResolvedForwardToQueue = _queues.GetValueOrDefault(forwardTo);
+        }
+
+        return sub;
+    }
+
+    public SubscriptionEntity? GetSubscription(string topicName, string subName) =>
+        GetTopic(topicName)?.GetSubscription(subName);
+
+    // ── Address resolution for AMQP ──────────────────────────────────────────
+
+    /// <summary>
+    /// Resolves an AMQP address to a <see cref="QueueEntity"/>.
+    /// Tries the address as a direct queue name first; if that fails it
+    /// parses the <c>topicName/Subscriptions/subName</c> pattern and
+    /// returns the subscription's internal queue.
+    /// Returns <see langword="null"/> when no match is found.
+    /// </summary>
+    public QueueEntity? ResolveQueue(string address)
+    {
+        if (_queues.TryGetValue(address, out var queue))
+            return queue;
+
+        // Try subscription path: "topicName/Subscriptions/subName"
+        var parts = address.Split('/');
+        if (parts.Length == 3 &&
+            parts[1].Equals("Subscriptions", StringComparison.OrdinalIgnoreCase))
+        {
+            return GetSubscription(parts[0], parts[2])?.Queue;
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// Resolves an AMQP send target address to either a queue or a topic.
+    /// </summary>
+    public (QueueEntity? Queue, TopicEntity? Topic) ResolveSendTarget(string address)
+    {
+        if (_queues.TryGetValue(address, out var queue))
+            return (queue, null);
+
+        if (_topics.TryGetValue(address, out var topic))
+            return (null, topic);
+
+        return (null, null);
+    }
+
+    // ── Sequence numbers ─────────────────────────────────────────────────────
+
+    public long NextSequenceNumber() =>
+        Interlocked.Increment(ref _sequenceNumber);
+}
