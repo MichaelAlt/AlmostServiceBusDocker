@@ -45,6 +45,10 @@ public class ServiceBusLinkProcessor : ILinkProcessor
                 address = null;
         }
 
+        // The Azure SDK sends addresses with a leading '/' (e.g. "/my-queue").
+        // Trim it to match entity names created via the REST API.
+        address = address?.TrimStart('/');
+
         if (string.IsNullOrEmpty(address))
         {
             attachContext.Complete(new Error(new Symbol("amqp:invalid-field"))
