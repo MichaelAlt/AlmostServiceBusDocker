@@ -1,4 +1,6 @@
 using System.Collections.Concurrent;
+using System.Text;
+using System.Text.Json;
 using System.Threading.Channels;
 
 namespace AzureServiceBusEmulator.Core.Broker;
@@ -14,6 +16,9 @@ public sealed class QueueEntity
     private readonly bool _isDeadLetterQueue;
     private QueueEntity? _deadLetterQueue;
     private int _messageCount;
+    private MessageEventBus? _eventBus;
+    private string? _namespaceName;
+    private string? _entityName;
 
     public QueueEntity(string name, bool isDeadLetterQueue = false)
     {
@@ -56,6 +61,13 @@ public sealed class QueueEntity
     /// </summary>
     public int MessageCount => _messageCount;
 
+    public void SetEventBus(MessageEventBus bus, string namespaceName, string entityName)
+    {
+        _eventBus = bus;
+        _namespaceName = namespaceName;
+        _entityName = entityName;
+    }
+
     /// <summary>
     /// The dead-letter queue for this entity. Created lazily.
     /// If this instance is already a dead-letter queue, returns itself.
@@ -82,6 +94,11 @@ public sealed class QueueEntity
         _channel.Writer.TryWrite(message);
         _allMessages[message.LockToken!] = message;
         Interlocked.Increment(ref _messageCount);
+        _eventBus?.Publish(new MessageEvent(
+            MessageEventType.Enqueued, _namespaceName ?? "", _entityName ?? "",
+            message.MessageId, message.SequenceNumber, message.ContentType,
+            TruncateBody(message), ExtractScalars(message),
+            DateTimeOffset.UtcNow));
     }
 
     /// <summary>
@@ -127,8 +144,15 @@ public sealed class QueueEntity
     /// </summary>
     public void Complete(string lockToken)
     {
-        _pending.TryRemove(lockToken, out _);
+        _pending.TryRemove(lockToken, out var message);
         _allMessages.TryRemove(lockToken, out _);
+        if (message is not null)
+        {
+            _eventBus?.Publish(new MessageEvent(
+                MessageEventType.Completed, _namespaceName ?? "", _entityName ?? "",
+                message.MessageId, message.SequenceNumber, message.ContentType,
+                null, null, DateTimeOffset.UtcNow));
+        }
     }
 
     /// <summary>
@@ -139,6 +163,11 @@ public sealed class QueueEntity
     {
         if (!_pending.TryRemove(lockToken, out var message))
             return;
+
+        _eventBus?.Publish(new MessageEvent(
+            MessageEventType.Abandoned, _namespaceName ?? "", _entityName ?? "",
+            message.MessageId, message.SequenceNumber, message.ContentType,
+            null, null, DateTimeOffset.UtcNow));
 
         if (message.DeliveryCount >= MaxDeliveryCount)
         {
@@ -159,6 +188,10 @@ public sealed class QueueEntity
             return;
 
         _allMessages.TryRemove(lockToken, out _);
+        _eventBus?.Publish(new MessageEvent(
+            MessageEventType.DeadLettered, _namespaceName ?? "", _entityName ?? "",
+            message.MessageId, message.SequenceNumber, message.ContentType,
+            null, null, DateTimeOffset.UtcNow));
         DeadLetter(message, reason, description);
     }
 
@@ -179,5 +212,37 @@ public sealed class QueueEntity
             .Take(maxCount)
             .ToList()
             .AsReadOnly();
+    }
+
+    private static string? TruncateBody(BrokeredMessage message)
+    {
+        if (message.Body is null || message.Body.Length == 0) return null;
+        var text = Encoding.UTF8.GetString(message.Body);
+        return text.Length > 500 ? text[..500] : text;
+    }
+
+    private static Dictionary<string, object>? ExtractScalars(BrokeredMessage message)
+    {
+        try
+        {
+            if (message.Body is null || message.Body.Length == 0) return null;
+            var doc = JsonDocument.Parse(message.Body);
+            var root = doc.RootElement;
+            if (root.TryGetProperty("message", out var inner))
+                root = inner;
+            var scalars = new Dictionary<string, object>();
+            foreach (var prop in root.EnumerateObject())
+            {
+                if (prop.Value.ValueKind is JsonValueKind.String)
+                    scalars[prop.Name] = prop.Value.GetString()!;
+                else if (prop.Value.ValueKind is JsonValueKind.Number)
+                    scalars[prop.Name] = prop.Value.GetDouble();
+                else if (prop.Value.ValueKind is JsonValueKind.True or JsonValueKind.False)
+                    scalars[prop.Name] = prop.Value.GetBoolean();
+                if (scalars.Count >= 5) break;
+            }
+            return scalars.Count > 0 ? scalars : null;
+        }
+        catch { return null; }
     }
 }

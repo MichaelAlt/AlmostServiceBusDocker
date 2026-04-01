@@ -11,13 +11,19 @@ public sealed class NamespaceRegistry
     private static readonly StringComparer KeyComparer = StringComparer.OrdinalIgnoreCase;
 
     private readonly ConcurrentDictionary<string, NamespaceContext> _namespaces = new(KeyComparer);
+    private readonly MessageEventBus? _eventBus;
+
+    public NamespaceRegistry(MessageEventBus? eventBus = null)
+    {
+        _eventBus = eventBus;
+    }
 
     /// <summary>
     /// Returns the <see cref="NamespaceContext"/> for the given namespace name,
     /// creating one if it does not yet exist.
     /// </summary>
     public NamespaceContext GetOrCreate(string namespaceName) =>
-        _namespaces.GetOrAdd(namespaceName, n => new NamespaceContext(n));
+        _namespaces.GetOrAdd(namespaceName, n => new NamespaceContext(n, _eventBus));
 
     /// <summary>
     /// Returns the <see cref="NamespaceContext"/> for the given namespace name,

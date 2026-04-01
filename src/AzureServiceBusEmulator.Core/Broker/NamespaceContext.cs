@@ -12,11 +12,13 @@ public sealed class NamespaceContext
 
     private readonly ConcurrentDictionary<string, QueueEntity> _queues = new(KeyComparer);
     private readonly ConcurrentDictionary<string, TopicEntity> _topics = new(KeyComparer);
+    private readonly MessageEventBus? _eventBus;
     private long _sequenceNumber;
 
-    public NamespaceContext(string name)
+    public NamespaceContext(string name, MessageEventBus? eventBus = null)
     {
         Name = name;
+        _eventBus = eventBus;
     }
 
     public string Name { get; }
@@ -24,7 +26,13 @@ public sealed class NamespaceContext
     // ── Queue methods ────────────────────────────────────────────────────────
 
     public QueueEntity CreateQueue(string name) =>
-        _queues.GetOrAdd(name, n => new QueueEntity(n));
+        _queues.GetOrAdd(name, n =>
+        {
+            var queue = new QueueEntity(n);
+            if (_eventBus is not null)
+                queue.SetEventBus(_eventBus, Name, n);
+            return queue;
+        });
 
     public QueueEntity? GetQueue(string name) =>
         _queues.GetValueOrDefault(name);
