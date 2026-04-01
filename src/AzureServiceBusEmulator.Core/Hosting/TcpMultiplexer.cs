@@ -51,6 +51,7 @@ public class TcpMultiplexer
 
     private async Task HandleConnectionAsync(TcpClient client, CancellationToken ct)
     {
+        TcpClient? backend = null;
         try
         {
             var stream = client.GetStream();
@@ -78,7 +79,7 @@ public class TcpMultiplexer
             }
 
             // Connect to backend
-            var backend = new TcpClient();
+            backend = new TcpClient();
             await backend.ConnectAsync(IPAddress.Loopback, backendPort, ct);
             var backendStream = backend.GetStream();
 
@@ -100,6 +101,7 @@ public class TcpMultiplexer
         finally
         {
             client.Dispose();
+            backend?.Dispose();
         }
     }
 }
