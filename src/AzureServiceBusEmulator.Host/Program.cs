@@ -1,10 +1,12 @@
 using AzureServiceBusEmulator.Core.Amqp;
 using AzureServiceBusEmulator.Core.Broker;
+using AzureServiceBusEmulator.Core.Dashboard;
 using AzureServiceBusEmulator.Core.Hosting;
 using AzureServiceBusEmulator.Core.Management;
 using System.Net;
 using System.Security.Cryptography.X509Certificates;
 using System.Net.Sockets;
+using Vite.AspNetCore;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -15,7 +17,8 @@ var amqpsPort = 5671; // Default AMQPS port — ServiceBusClient connects here
 var internalHttpPort = GetFreePort();
 var internalAmqpPort = GetFreePort();
 
-var registry = new NamespaceRegistry();
+var eventBus = new MessageEventBus();
+var registry = new NamespaceRegistry(eventBus);
 
 // Kestrel serves plain HTTP — TLS is terminated by the multiplexer
 builder.WebHost.ConfigureKestrel(k =>
@@ -25,7 +28,14 @@ builder.WebHost.ConfigureKestrel(k =>
 
 var app = builder.Build();
 
+app.UseCors(policy => policy
+    .AllowAnyOrigin()
+    .AllowAnyMethod()
+    .AllowAnyHeader());
+
 app.MapServiceBusManagementApi(registry);
+app.MapDashboardApi(registry);
+app.MapDashboardSse(eventBus);
 
 var amqpServer = new AmqpServer(new AmqpServerOptions { Port = internalAmqpPort }, registry);
 amqpServer.Start();

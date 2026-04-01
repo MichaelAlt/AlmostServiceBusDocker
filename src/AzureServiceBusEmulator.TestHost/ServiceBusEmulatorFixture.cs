@@ -1,6 +1,7 @@
 using System.Security.Cryptography.X509Certificates;
 using AzureServiceBusEmulator.Core.Amqp;
 using AzureServiceBusEmulator.Core.Broker;
+using AzureServiceBusEmulator.Core.Dashboard;
 using AzureServiceBusEmulator.Core.Hosting;
 using AzureServiceBusEmulator.Core.Management;
 using Microsoft.AspNetCore.Builder;
@@ -15,7 +16,8 @@ public class ServiceBusEmulatorFixture : IAsyncDisposable
     private AmqpServer? _amqpServer;
     private TcpMultiplexer? _multiplexer;
     private CancellationTokenSource? _multiplexerCts;
-    private readonly NamespaceRegistry _registry = new();
+    private readonly MessageEventBus _eventBus = new();
+    private readonly NamespaceRegistry _registry;
     private readonly string _namespace;
 
     public int PublicPort { get; private set; }
@@ -32,6 +34,7 @@ public class ServiceBusEmulatorFixture : IAsyncDisposable
     public ServiceBusEmulatorFixture()
     {
         _namespace = $"test-{Guid.NewGuid():N}"[..20];
+        _registry = new NamespaceRegistry(_eventBus);
     }
 
     public async Task StartAsync()
@@ -50,6 +53,8 @@ public class ServiceBusEmulatorFixture : IAsyncDisposable
 
         _webApp = builder.Build();
         _webApp.MapServiceBusManagementApi(_registry);
+        _webApp.MapDashboardApi(_registry);
+        _webApp.MapDashboardSse(_eventBus);
         await _webApp.StartAsync();
 
         // 2. Start AMQP on internal port (with SASL for Azure SDK compatibility)
