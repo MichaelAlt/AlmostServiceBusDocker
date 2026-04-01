@@ -2,6 +2,9 @@ using System.Net;
 using System.Net.Sockets;
 using System.Text;
 using AzureServiceBusEmulator.Core.Hosting;
+using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Hosting;
+using Microsoft.Extensions.Logging;
 
 namespace AzureServiceBusEmulator.Tests.Hosting;
 
@@ -158,6 +161,51 @@ public class TcpMultiplexerTests : IAsyncDisposable
         catch (IOException)
         {
             // Connection was reset by the remote host — also acceptable
+        }
+    }
+
+    [Fact]
+    public async Task Routes_RealHttps_ToKestrelBackend()
+    {
+        var publicPort = GetFreePort();
+        var amqpPort = GetFreePort();
+        var httpsPort = GetFreePort();
+
+        // Start a real Kestrel HTTPS server on the internal port
+        var builder = WebApplication.CreateBuilder();
+        builder.WebHost.ConfigureKestrel(k =>
+        {
+            k.ListenLocalhost(httpsPort, o => o.UseHttps());
+        });
+        builder.Logging.ClearProviders();
+        var app = builder.Build();
+        app.MapGet("/health", () => "ok");
+        await app.StartAsync();
+
+        try
+        {
+            var multiplexer = new TcpMultiplexer(publicPort, amqpPort, httpsPort);
+            _ = multiplexer.StartAsync(_cts.Token);
+
+            await Task.Delay(100);
+
+            // Make an HTTPS request through the multiplexer
+            var handler = new HttpClientHandler
+            {
+                ServerCertificateCustomValidationCallback = (_, _, _, _) => true
+            };
+            using var httpClient = new HttpClient(handler)
+            {
+                BaseAddress = new Uri($"https://localhost:{publicPort}")
+            };
+
+            var response = await httpClient.GetStringAsync("/health");
+            Assert.Equal("ok", response);
+        }
+        finally
+        {
+            await app.StopAsync();
+            await app.DisposeAsync();
         }
     }
 }
