@@ -19,8 +19,6 @@ public class ReceiverLinkEndpoint : LinkEndpoint
     private readonly QueueEntity _queue;
     private CancellationTokenSource? _pumpCts;
     private Task? _pumpTask;
-    private int _credit;
-
     public ReceiverLinkEndpoint(QueueEntity queue)
     {
         _queue = queue;
@@ -38,10 +36,6 @@ public class ReceiverLinkEndpoint : LinkEndpoint
             flowContext.Link.CompleteDrain();
             return;
         }
-
-        // Track credit from the client. flowContext.Messages is the total
-        // credit the client is granting (not incremental).
-        Interlocked.Exchange(ref _credit, flowContext.Messages);
 
         if (_pumpTask is null || _pumpTask.IsCompleted)
         {
@@ -61,27 +55,21 @@ public class ReceiverLinkEndpoint : LinkEndpoint
         {
             while (!ct.IsCancellationRequested)
             {
-                // Respect AMQP flow control: only send messages when the client
-                // has granted credit. Without this check, we'd dequeue messages
-                // the client didn't ask for, causing them to be Released/abandoned.
-                if (Volatile.Read(ref _credit) <= 0)
+                // Check AMQPNetLite's internal credit before dequeuing.
+                // The credit field is updated by AMQPNetLite when the client
+                // sends Flow frames (including after completing messages).
+                if (GetLinkCredit(link) <= 0)
                 {
                     await Task.Delay(10, ct);
                     continue;
                 }
 
-                // Use TryDequeueImmediate + short delay instead of blocking DequeueAsync.
-                // Blocking DequeueAsync prevents AMQPNetLite from closing the link/connection
-                // during graceful shutdown, causing a 30-second timeout.
                 var brokered = _queue.TryDequeueImmediate();
                 if (brokered is null)
                 {
                     await Task.Delay(10, ct);
                     continue;
                 }
-
-                // Consume one unit of credit before sending
-                Interlocked.Decrement(ref _credit);
 
                 try
                 {
@@ -258,5 +246,19 @@ public class ReceiverLinkEndpoint : LinkEndpoint
             };
         }
         return null;
+    }
+
+    private static readonly System.Reflection.FieldInfo? CreditField =
+        typeof(ListenerLink).GetField("credit", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+
+    /// <summary>
+    /// Reads the link's internal credit counter via reflection.
+    /// AMQPNetLite updates this when the client sends Flow frames
+    /// (including credit replenishment after completing messages).
+    /// </summary>
+    private static uint GetLinkCredit(ListenerLink link)
+    {
+        try { return (uint)(CreditField?.GetValue(link) ?? 0u); }
+        catch { return 1u; } // If reflection fails, assume credit available
     }
 }
