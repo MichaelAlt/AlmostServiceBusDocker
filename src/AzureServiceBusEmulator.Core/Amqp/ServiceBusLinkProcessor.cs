@@ -26,16 +26,8 @@ public class ServiceBusLinkProcessor : ILinkProcessor
         // Link.Role == false means the server-side link is a sender (client is receiving)
         var isServerReceiver = attachContext.Link.Role;
 
-        // Reject transaction coordinator links — we don't support AMQP transactions.
-        // NServiceBus and other frameworks open coordinator links for transactional sends.
-        if (attachContext.Attach.Target is global::Amqp.Transactions.Coordinator)
-        {
-            attachContext.Complete(new Error(new Symbol("amqp:not-implemented"))
-            {
-                Description = "AMQP transactions are not supported by the emulator."
-            });
-            return;
-        }
+        // Note: Transaction coordinator links (Amqp.Transactions.Coordinator targets) are
+        // rejected upstream in EmulatorContainer.AttachLink before this processor is called.
 
         string? address;
         if (isServerReceiver)
@@ -69,7 +61,7 @@ public class ServiceBusLinkProcessor : ILinkProcessor
             return;
         }
 
-        // $cbs and $management are handled by ContainerHost's RegisterRequestProcessor
+        // $cbs and $management are handled by EmulatorContainer's request processors
         if (address is "$cbs" or "$management")
         {
             attachContext.Complete(new Error(new Symbol("amqp:not-found"))

@@ -5,14 +5,17 @@ using AzureServiceBusEmulator.Core.Broker;
 namespace AzureServiceBusEmulator.Core.Amqp;
 
 /// <summary>
-/// Wraps the AMQPNetLite <see cref="ContainerHost"/> lifecycle.
+/// Wraps the AMQPNetLite <see cref="ConnectionListener"/> lifecycle.
+/// Uses a custom <see cref="EmulatorContainer"/> instead of <see cref="ContainerHost"/>
+/// to avoid a crash when clients send Attach frames with Coordinator targets
+/// (used for AMQP transactions by NServiceBus and others).
 /// </summary>
 public class AmqpServer : IDisposable
 {
     private readonly AmqpServerOptions _options;
     private readonly NamespaceRegistry _registry;
     private readonly ScheduledMessageProcessor? _scheduledProcessor;
-    private ContainerHost? _host;
+    private ConnectionListener? _listener;
 
     public AmqpServer(AmqpServerOptions options, NamespaceRegistry registry, ScheduledMessageProcessor? scheduledProcessor = null)
     {
@@ -24,36 +27,33 @@ public class AmqpServer : IDisposable
     public void Start()
     {
         var address = new Address(_options.Host, _options.Port, null, null, "/", "AMQP");
-        _host = new ContainerHost(address);
+
+        // Build the custom container that handles Coordinator targets gracefully.
+        var defaultContext = _registry.GetOrCreate("default");
+
+        var container = new EmulatorContainer();
+        container.RegisterRequestProcessor("$cbs", new CbsRequestProcessor());
+        container.RegisterRequestProcessor("$management", new ManagementLinkEndpoint(defaultContext, _scheduledProcessor));
+        container.RegisterLinkProcessor(new ServiceBusLinkProcessor(_registry, _scheduledProcessor));
+
+        _listener = new ConnectionListener(address, container);
 
         // Enable SASL so the Azure SDK's AMQPS connections can authenticate.
         // The SDK uses MSSBCBS (Microsoft Service Bus CBS) mechanism.
-        foreach (var listener in _host.Listeners)
-        {
-            listener.SASL.EnableAnonymousMechanism = true;
-            listener.SASL.EnablePlainMechanism("RootManageSharedAccessKey", "emulator");
-            listener.SASL.EnableMechanism(MssbcbsSaslProfile.MechanismName, new MssbcbsSaslProfile());
+        _listener.SASL.EnableAnonymousMechanism = true;
+        _listener.SASL.EnablePlainMechanism("RootManageSharedAccessKey", "emulator");
+        _listener.SASL.EnableMechanism(MssbcbsSaslProfile.MechanismName, new MssbcbsSaslProfile());
 
-            listener.HandlerFactory = _ => new GuidDeliveryTagHandler();
-        }
+        // Intercept outgoing deliveries to rewrite tags as GUIDs and handle connection cleanup.
+        _listener.HandlerFactory = _ => new GuidDeliveryTagHandler();
 
-        // Register CBS authentication handler
-        _host.RegisterRequestProcessor("$cbs", new CbsRequestProcessor());
-
-        // Register management endpoint
-        var defaultContext = _registry.GetOrCreate("default");
-        _host.RegisterRequestProcessor("$management", new ManagementLinkEndpoint(defaultContext, _scheduledProcessor));
-
-        // Register link processor for all other links
-        _host.RegisterLinkProcessor(new ServiceBusLinkProcessor(_registry, _scheduledProcessor));
-
-        _host.Open();
+        _listener.Open();
     }
 
     public void Stop()
     {
-        _host?.Close();
-        _host = null;
+        _listener?.Close();
+        _listener = null;
     }
 
     public void Dispose()
