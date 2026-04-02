@@ -148,7 +148,22 @@ public static class ManagementApiEndpoints
             var path = GetRoutePath(request);
             if (string.IsNullOrEmpty(path))
                 return ManagementApiErrors.EntityNotFound("");
+
             var ns = ResolveNamespace(request, registry);
+
+            // List all queues: GET /$Resources/Queues
+            if (path.Equals("$Resources/Queues", StringComparison.OrdinalIgnoreCase))
+            {
+                var feed = AtomXmlWriter.WriteQueueFeed(ns.GetQueues());
+                return Results.Content(feed, AtomXmlContentType);
+            }
+
+            // List all topics: GET /$Resources/Topics
+            if (path.Equals("$Resources/Topics", StringComparison.OrdinalIgnoreCase))
+            {
+                var feed = AtomXmlWriter.WriteTopicFeed(ns.GetTopics());
+                return Results.Content(feed, AtomXmlContentType);
+            }
 
             if (TryParseRulePath(path, out var topicName, out var subName, out var ruleName))
             {
