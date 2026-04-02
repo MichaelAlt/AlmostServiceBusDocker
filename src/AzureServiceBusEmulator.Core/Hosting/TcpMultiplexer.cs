@@ -22,6 +22,18 @@ public class TcpMultiplexer
     private const byte AmqpByte = 0x41; // 'A' — start of "AMQP\0\1\0\0"
     private const byte TlsByte = 0x16;  // TLS record type: Handshake
 
+    /// <summary>
+    /// Checks if a byte looks like the start of an HTTP request method
+    /// (GET, PUT, POST, DELETE, PATCH, HEAD, OPTIONS).
+    /// Used for UseDevelopmentEmulator=true which sends plain HTTP without TLS.
+    /// </summary>
+    private static bool IsHttpByte(byte b) => b is
+        0x47 or // G (GET)
+        0x50 or // P (PUT, POST, PATCH)
+        0x44 or // D (DELETE)
+        0x48 or // H (HEAD)
+        0x4F;   // O (OPTIONS)
+
     private readonly int _listenPort;
     private readonly int _amqpPort;
     private readonly int _httpPort;
@@ -83,6 +95,14 @@ public class TcpMultiplexer
             else if (firstByte[0] == TlsByte && _certificate is not null)
             {
                 await HandleTlsConnection(client, stream, firstByte, ct);
+            }
+            else if (IsHttpByte(firstByte[0]))
+            {
+                // Plain HTTP (UseDevelopmentEmulator=true skips TLS)
+                backend = await ConnectToBackend(_httpPort, ct);
+                var backendStream = backend.GetStream();
+                await backendStream.WriteAsync(firstByte.AsMemory(0, 1), ct);
+                await ProxyBidirectional(stream, backendStream, client, backend, ct);
             }
             else
             {
