@@ -41,6 +41,7 @@ export interface MessageInfo {
   applicationProperties: Record<string, unknown> | null
   bodyText: string | null
   scalarProperties: Record<string, unknown> | null
+  state: 'Active' | 'Consumed' | 'DeadLettered'
 }
 
 export interface MessageEvent {

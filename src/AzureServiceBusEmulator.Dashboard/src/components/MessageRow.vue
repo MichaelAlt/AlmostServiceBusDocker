@@ -13,9 +13,13 @@ function timeAgo(iso: string): string {
 </script>
 
 <template>
-  <div class="row" :class="{ selected }" @click="$emit('select')">
+  <div class="row" :class="{ selected, consumed: message.state === 'Consumed', deadlettered: message.state === 'DeadLettered' }" @click="$emit('select')">
     <div class="header">
-      <span class="msg-id">{{ message.messageId.substring(0, 12) }}</span>
+      <span class="msg-id">
+        <span v-if="message.state === 'Consumed'" class="state-icon consumed-icon" title="Consumed">✓</span>
+        <span v-else-if="message.state === 'DeadLettered'" class="state-icon dl-icon" title="Dead-lettered">✗</span>
+        {{ message.messageId.substring(0, 12) }}
+      </span>
       <span class="time">{{ timeAgo(message.enqueuedTimeUtc) }}</span>
     </div>
     <div v-if="message.scalarProperties" class="tags">
@@ -33,8 +37,13 @@ function timeAgo(iso: string): string {
 .row { padding: 8px 12px; border-bottom: 1px solid var(--border-subtle); cursor: pointer; }
 .row:hover { background: var(--bg-surface); }
 .row.selected { background: var(--bg-surface); border-left: 3px solid var(--blue); }
+.row.consumed { opacity: 0.7; }
+.row.deadlettered { opacity: 0.7; }
 .header { display: flex; justify-content: space-between; align-items: center; }
-.msg-id { color: var(--text); font-weight: 500; font-size: 11px; }
+.msg-id { color: var(--text); font-weight: 500; font-size: 11px; display: flex; align-items: center; gap: 4px; }
+.state-icon { font-size: 12px; font-weight: 700; }
+.consumed-icon { color: var(--green); }
+.dl-icon { color: var(--red); }
 .time { color: var(--text-muted); font-size: 9px; }
 .tags { display: flex; gap: 4px; margin-top: 5px; flex-wrap: wrap; }
 .tag { background: var(--bg-crust); color: var(--green); padding: 1px 6px; border-radius: 3px; font-size: 9px; font-family: monospace; }

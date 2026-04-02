@@ -1,10 +1,18 @@
 namespace AzureServiceBusEmulator.Core.Broker;
 
+public enum MessageState
+{
+    Active,
+    Consumed,
+    DeadLettered
+}
+
 /// <summary>
 /// Message envelope used internally by the emulator broker.
 /// </summary>
 public sealed class BrokeredMessage
 {
+    public MessageState State { get; set; } = MessageState.Active;
     public string MessageId { get; set; } = Guid.NewGuid().ToString();
 
     public byte[] Body { get; set; } = [];

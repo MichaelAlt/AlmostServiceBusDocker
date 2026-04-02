@@ -33,4 +33,5 @@ public record MessageInfo(
     string? Subject,
     Dictionary<string, object>? ApplicationProperties,
     string? BodyText,
-    Dictionary<string, object>? ScalarProperties);
+    Dictionary<string, object>? ScalarProperties,
+    string State);

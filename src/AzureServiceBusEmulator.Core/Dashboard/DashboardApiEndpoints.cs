@@ -144,7 +144,8 @@ public static class DashboardApiEndpoints
         return new MessageInfo(
             m.MessageId, m.SequenceNumber, m.ContentType,
             m.CorrelationId, m.DeliveryCount, m.EnqueuedTimeUtc,
-            m.Subject, m.ApplicationProperties, bodyText, scalars);
+            m.Subject, m.ApplicationProperties, bodyText, scalars,
+            m.State.ToString());
     }
 
     private static Dictionary<string, object>? ExtractScalars(string json)

@@ -145,7 +145,9 @@ public sealed class QueueEntity
     public void Complete(string lockToken)
     {
         _pending.TryRemove(lockToken, out var message);
-        _allMessages.TryRemove(lockToken, out _);
+        // Mark as consumed but keep in _allMessages for dashboard visibility
+        if (_allMessages.TryGetValue(lockToken, out var tracked))
+            tracked.State = MessageState.Consumed;
         if (message is not null)
         {
             _eventBus?.Publish(new MessageEvent(
@@ -187,7 +189,8 @@ public sealed class QueueEntity
         if (!_pending.TryRemove(lockToken, out var message))
             return;
 
-        _allMessages.TryRemove(lockToken, out _);
+        if (_allMessages.TryGetValue(lockToken, out var tracked))
+            tracked.State = MessageState.DeadLettered;
         _eventBus?.Publish(new MessageEvent(
             MessageEventType.DeadLettered, _namespaceName ?? "", _entityName ?? "",
             message.MessageId, message.SequenceNumber, message.ContentType,

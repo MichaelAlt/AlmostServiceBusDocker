@@ -37,8 +37,15 @@ export function useMessages(ns: () => string, entity: () => string | null, entit
           applicationProperties: null,
           bodyText: evt.bodyPreview,
           scalarProperties: evt.scalarProperties,
+          state: 'Active',
         })
         if (messages.value.length > 100) messages.value.pop()
+      } else if (evt.type === 'Completed') {
+        const msg = messages.value.find(m => m.messageId === evt.messageId)
+        if (msg) msg.state = 'Consumed'
+      } else if (evt.type === 'DeadLettered') {
+        const msg = messages.value.find(m => m.messageId === evt.messageId)
+        if (msg) msg.state = 'DeadLettered'
       }
     })
 
