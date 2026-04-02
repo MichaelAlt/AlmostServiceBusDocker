@@ -1,4 +1,3 @@
-using System.Reflection;
 using global::Amqp;
 using global::Amqp.Framing;
 using global::Amqp.Listener;
@@ -11,10 +10,9 @@ namespace AzureServiceBusEmulator.Core.Amqp;
 /// Server-side endpoint for sending messages to clients.
 /// When a client has a receiver link, the server has a sender endpoint.
 ///
-/// Messages are sent pre-settled (ReceiveAndDelete semantics) because
-/// AMQPNetLite's ListenerLink generates 4-byte delivery tags, but the
-/// Azure SDK expects 16-byte GUIDs for PeekLock settlement. Pre-settling
-/// avoids this incompatibility. Messages are auto-completed on delivery.
+/// The Azure SDK grants credit upfront and expects messages to be pushed
+/// as they arrive. We start a background pump that continuously dequeues
+/// from the queue and sends to the client while credit is available.
 /// </summary>
 public class ReceiverLinkEndpoint : LinkEndpoint
 {
@@ -31,10 +29,6 @@ public class ReceiverLinkEndpoint : LinkEndpoint
     {
         if (_pumpTask is null || _pumpTask.IsCompleted)
         {
-            // Pre-settle messages so the Azure SDK doesn't need to call Complete().
-            // This works around AMQPNetLite's 4-byte delivery tag limitation.
-            SetSettleOnSend(flowContext.Link, true);
-
             _pumpCts = new CancellationTokenSource();
             _pumpTask = Task.Run(() => MessagePumpAsync(flowContext.Link, _pumpCts.Token));
         }
@@ -49,10 +43,6 @@ public class ReceiverLinkEndpoint : LinkEndpoint
                 var brokered = await _queue.DequeueAsync(ct);
                 var amqpMessage = ConvertToAmqpMessage(brokered);
                 link.SendMessage(amqpMessage);
-
-                // Auto-complete the message since we're pre-settling
-                if (brokered.LockToken is not null)
-                    _queue.Complete(brokered.LockToken);
             }
         }
         catch (OperationCanceledException) { }
@@ -62,11 +52,11 @@ public class ReceiverLinkEndpoint : LinkEndpoint
 
     public override void OnDisposition(DispositionContext dispositionContext)
     {
-        // Messages are pre-settled, so dispositions are no-ops.
-        // But handle them gracefully in case clients send them anyway.
         var lockToken = GetLockToken(dispositionContext.Message);
+
         if (lockToken is not null)
             SettleMessage(lockToken, dispositionContext.DeliveryState);
+
         dispositionContext.Complete();
     }
 
@@ -151,13 +141,6 @@ public class ReceiverLinkEndpoint : LinkEndpoint
     }
 
     private static readonly TimeSpan LockDuration = TimeSpan.FromSeconds(30);
-
-    private static void SetSettleOnSend(ListenerLink link, bool value)
-    {
-        var field = typeof(ListenerLink).GetField("<SettleOnSend>k__BackingField",
-            BindingFlags.NonPublic | BindingFlags.Instance);
-        field?.SetValue(link, value);
-    }
 
     private static string? GetLockToken(Message message)
     {

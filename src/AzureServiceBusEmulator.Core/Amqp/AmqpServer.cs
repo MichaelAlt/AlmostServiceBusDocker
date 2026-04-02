@@ -33,6 +33,11 @@ public class AmqpServer : IDisposable
             listener.SASL.EnableAnonymousMechanism = true;
             listener.SASL.EnablePlainMechanism("RootManageSharedAccessKey", "emulator");
             listener.SASL.EnableMechanism(MssbcbsSaslProfile.MechanismName, new MssbcbsSaslProfile());
+
+            // Rewrite delivery tags from 4-byte ints to 16-byte GUIDs.
+            // The Azure SDK reads the delivery tag as LockTokenGuid — without
+            // this, PeekLock settlement (Complete/Abandon) fails.
+            listener.HandlerFactory = _ => new GuidDeliveryTagHandler();
         }
 
         // Register CBS authentication handler
