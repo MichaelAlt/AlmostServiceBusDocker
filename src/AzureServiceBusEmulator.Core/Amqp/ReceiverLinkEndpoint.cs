@@ -9,10 +9,17 @@ namespace AzureServiceBusEmulator.Core.Amqp;
 /// <summary>
 /// Server-side endpoint for sending messages to clients.
 /// When a client has a receiver link, the server has a sender endpoint.
+///
+/// The Azure SDK grants credit upfront and expects messages to be pushed
+/// as they arrive. We start a background pump that continuously dequeues
+/// from the queue and sends to the client while credit is available.
 /// </summary>
 public class ReceiverLinkEndpoint : LinkEndpoint
 {
     private readonly QueueEntity _queue;
+    private CancellationTokenSource? _pumpCts;
+    private Task? _pumpTask;
+    private ListenerLink? _link;
 
     public ReceiverLinkEndpoint(QueueEntity queue)
     {
@@ -21,17 +28,32 @@ public class ReceiverLinkEndpoint : LinkEndpoint
 
     public override void OnFlow(FlowContext flowContext)
     {
-        var credit = flowContext.Messages;
-
-        for (var i = 0; i < credit; i++)
+        // Start the message pump on first flow if not already running.
+        // The pump continuously dequeues and sends while the link has credit.
+        if (_pumpTask is null || _pumpTask.IsCompleted)
         {
-            var brokered = _queue.TryDequeueImmediate();
-            if (brokered is null)
-                break;
-
-            var amqpMessage = ConvertToAmqpMessage(brokered);
-            flowContext.Link.SendMessage(amqpMessage);
+            _link = flowContext.Link;
+            _pumpCts = new CancellationTokenSource();
+            _pumpTask = Task.Run(() => MessagePumpAsync(flowContext.Link, _pumpCts.Token));
         }
+    }
+
+    private async Task MessagePumpAsync(ListenerLink link, CancellationToken ct)
+    {
+        try
+        {
+            while (!ct.IsCancellationRequested && !link.IsClosed)
+            {
+                // Wait for a message (blocks until one is available)
+                var brokered = await _queue.DequeueAsync(ct);
+
+                var amqpMessage = ConvertToAmqpMessage(brokered);
+                link.SendMessage(amqpMessage);
+            }
+        }
+        catch (OperationCanceledException) { }
+        catch (AmqpException) { } // Link closed
+        catch { } // Other errors — pump stops
     }
 
     public override void OnDisposition(DispositionContext dispositionContext)
@@ -48,9 +70,16 @@ public class ReceiverLinkEndpoint : LinkEndpoint
         dispositionContext.Complete();
     }
 
+    public override void OnLinkClosed(ListenerLink link, Error error)
+    {
+        _pumpCts?.Cancel();
+        _pumpCts?.Dispose();
+        _pumpCts = null;
+        base.OnLinkClosed(link, error);
+    }
+
     /// <summary>
     /// Settles a message by lock token based on the AMQP delivery state.
-    /// Exposed as public for testing.
     /// </summary>
     public void SettleMessage(string lockToken, DeliveryState deliveryState)
     {
@@ -122,7 +151,6 @@ public class ReceiverLinkEndpoint : LinkEndpoint
             }
         };
 
-        // Copy application properties
         if (brokered.ApplicationProperties.Count > 0)
         {
             message.ApplicationProperties = new ApplicationProperties();

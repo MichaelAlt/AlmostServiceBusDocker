@@ -1,6 +1,6 @@
 namespace AzureServiceBusEmulator.Core.Dashboard;
 
-public record NamespaceInfo(string Name, int QueueCount, int TopicCount);
+public record NamespaceInfo(string Name, int QueueCount, int TopicCount, DateTimeOffset LastActivityAt);
 
 public record EntityOverview(
     List<QueueInfo> Queues,

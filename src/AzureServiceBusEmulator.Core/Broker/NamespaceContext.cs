@@ -15,6 +15,11 @@ public sealed class NamespaceContext
     private readonly MessageEventBus? _eventBus;
     private long _sequenceNumber;
 
+    public DateTimeOffset CreatedAt { get; } = DateTimeOffset.UtcNow;
+    public DateTimeOffset LastActivityAt { get; private set; } = DateTimeOffset.UtcNow;
+
+    public void Touch() => LastActivityAt = DateTimeOffset.UtcNow;
+
     public NamespaceContext(string name, MessageEventBus? eventBus = null)
     {
         Name = name;
@@ -25,14 +30,17 @@ public sealed class NamespaceContext
 
     // ── Queue methods ────────────────────────────────────────────────────────
 
-    public QueueEntity CreateQueue(string name) =>
-        _queues.GetOrAdd(name, n =>
+    public QueueEntity CreateQueue(string name)
+    {
+        Touch();
+        return _queues.GetOrAdd(name, n =>
         {
             var queue = new QueueEntity(n);
             if (_eventBus is not null)
                 queue.SetEventBus(_eventBus, Name, n);
             return queue;
         });
+    }
 
     public QueueEntity? GetQueue(string name) =>
         _queues.GetValueOrDefault(name);
@@ -45,8 +53,11 @@ public sealed class NamespaceContext
 
     // ── Topic methods ────────────────────────────────────────────────────────
 
-    public TopicEntity CreateTopic(string name) =>
-        _topics.GetOrAdd(name, n => new TopicEntity(n));
+    public TopicEntity CreateTopic(string name)
+    {
+        Touch();
+        return _topics.GetOrAdd(name, n => new TopicEntity(n));
+    }
 
     public TopicEntity? GetTopic(string name) =>
         _topics.GetValueOrDefault(name);

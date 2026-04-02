@@ -102,8 +102,8 @@ const activeTab = ref<'body' | 'appProps' | 'sysProps'>('body')
 .tab { padding: 6px 12px; color: var(--text-muted); font-size: 10px; cursor: pointer; }
 .tab.active { border-bottom: 2px solid var(--blue); color: var(--blue); font-weight: 600; }
 .count { background: var(--bg-surface); padding: 0 4px; border-radius: 3px; font-size: 9px; margin-left: 4px; }
-.tab-content { flex: 1; overflow-y: auto; }
-.body-viewer { padding: 12px 16px; background: var(--bg-crust); height: 100%; }
+.tab-content { flex: 1; overflow-y: auto; background: var(--bg-crust); }
+.body-viewer { padding: 12px 16px; min-height: 100%; }
 .props-viewer { padding: 12px 16px; }
 .prop-row { display: grid; grid-template-columns: 200px 1fr; gap: 4px 12px; padding: 4px 0; border-bottom: 1px solid var(--border-subtle); font-size: 11px; }
 .prop-key { color: var(--blue); font-family: monospace; }

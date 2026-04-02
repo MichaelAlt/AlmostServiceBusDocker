@@ -1,31 +1,64 @@
-import { ref, computed, reactive } from 'vue'
+import { ref, computed, reactive, watch } from 'vue'
 import type { EntityOverview, QueueInfo, TopicInfo, EntityGroup, NamespaceInfo } from '../types'
 import { api } from '../api/client'
+import { connectSse } from '../api/sse'
 
 export function useEntities(selectedNamespace: () => string) {
   const namespaces = ref<NamespaceInfo[]>([])
   const entities = ref<EntityOverview | null>(null)
+  const loading = ref(false)
   const filter = ref('')
   const collapsedGroups = reactive(new Set<string>())
 
+  // Namespace list polls (infrequent, lightweight)
+  let nsInterval: ReturnType<typeof setInterval>
+
   async function refreshNamespaces() {
-    try { namespaces.value = await api.getNamespaces() } catch { /* ignore */ }
+    try { namespaces.value = await api.getNamespaces() } catch {}
   }
 
   async function refreshEntities() {
-    try { entities.value = await api.getEntities(selectedNamespace()) } catch { /* ignore */ }
+    const ns = selectedNamespace()
+    if (!ns) return
+    loading.value = true
+    try { entities.value = await api.getEntities(ns) } catch {}
+    finally { loading.value = false }
   }
 
-  let interval: ReturnType<typeof setInterval>
+  // SSE for real-time entity updates — when a message flows through
+  // the namespace, refresh the entity list to pick up new counts/entities
+  let entitySse: EventSource | null = null
+
+  function startEntitySse() {
+    entitySse?.close()
+    const ns = selectedNamespace()
+    if (!ns) return
+
+    entitySse = connectSse(ns, undefined, () => {
+      // Any event in this namespace = refresh entity counts
+      refreshEntities()
+    })
+  }
+
   function startPolling() {
     refreshNamespaces()
     refreshEntities()
-    interval = setInterval(() => {
-      refreshNamespaces()
-      refreshEntities()
-    }, 3000)
+    startEntitySse()
+    nsInterval = setInterval(refreshNamespaces, 5000)
   }
-  function stopPolling() { clearInterval(interval) }
+
+  function stopPolling() {
+    clearInterval(nsInterval)
+    entitySse?.close()
+    entitySse = null
+  }
+
+  // When namespace changes, reload entities and reconnect SSE
+  function onNamespaceChange() {
+    entities.value = null
+    refreshEntities()
+    startEntitySse()
+  }
 
   function toggleGroup(prefix: string) {
     if (collapsedGroups.has(prefix)) {
@@ -61,5 +94,5 @@ export function useEntities(selectedNamespace: () => string) {
     return f ? entities.value.queues.filter(q => q.name.toLowerCase().includes(f)) : entities.value.queues
   })
 
-  return { namespaces, entities, filter, topicGroups, filteredQueues, toggleGroup, isCollapsed, startPolling, stopPolling, refreshEntities }
+  return { namespaces, entities, loading, filter, topicGroups, filteredQueues, toggleGroup, isCollapsed, startPolling, stopPolling, onNamespaceChange, refreshEntities }
 }

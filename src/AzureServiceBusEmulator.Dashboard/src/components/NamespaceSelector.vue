@@ -15,8 +15,10 @@ const filtered = computed(() => {
     : props.namespaces
 })
 
-const selectedInfo = computed(() =>
-  props.namespaces.find(ns => ns.name === props.selected)
+const recents = computed(() =>
+  [...props.namespaces]
+    .sort((a, b) => new Date(b.lastActivityAt).getTime() - new Date(a.lastActivityAt).getTime())
+    .slice(0, 5)
 )
 
 function select(name: string) {
@@ -31,8 +33,14 @@ function onFocus() {
 }
 
 function onBlur() {
-  // Delay to allow click on dropdown item
   setTimeout(() => { open.value = false }, 150)
+}
+
+function timeAgo(iso: string): string {
+  const diff = Date.now() - new Date(iso).getTime()
+  if (diff < 60000) return `${Math.floor(diff / 1000)}s ago`
+  if (diff < 3600000) return `${Math.floor(diff / 60000)}m ago`
+  return `${Math.floor(diff / 3600000)}h ago`
 }
 </script>
 
@@ -46,10 +54,23 @@ function onBlur() {
         @focus="onFocus"
         @blur="onBlur"
       />
-      <span v-if="selectedInfo" class="counts">
-        {{ selectedInfo.queueCount }}q · {{ selectedInfo.topicCount }}t
-      </span>
     </div>
+
+    <!-- Recents (always visible below search) -->
+    <div v-if="recents.length > 0 && !open" class="recents">
+      <div
+        v-for="(ns, i) in recents" :key="ns.name"
+        class="recent-item"
+        :class="{ active: ns.name === selected }"
+        :style="{ opacity: 1 - (i * 0.15) }"
+        @click="select(ns.name)"
+      >
+        <span class="ns-name">{{ ns.name }}</span>
+        <span class="ns-meta">{{ ns.queueCount }}q · {{ ns.topicCount }}t · {{ timeAgo(ns.lastActivityAt) }}</span>
+      </div>
+    </div>
+
+    <!-- Full dropdown (when searching) -->
     <div v-if="open && filtered.length > 0" class="dropdown">
       <div
         v-for="ns in filtered" :key="ns.name"
@@ -72,7 +93,18 @@ function onBlur() {
   min-width: 0;
 }
 .input-row input::placeholder { color: var(--blue); }
-.counts { font-size: 9px; color: var(--text-muted); white-space: nowrap; }
+
+.recents { padding: 2px 4px 4px; }
+.recent-item {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 4px 8px; cursor: pointer; font-size: 10px; border-radius: 4px;
+  color: var(--text);
+}
+.recent-item:hover { background: var(--bg-surface); }
+.recent-item.active { color: var(--blue); background: var(--bg-surface); }
+.ns-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.ns-meta { font-size: 9px; color: var(--text-muted); white-space: nowrap; margin-left: 8px; flex-shrink: 0; }
+
 .dropdown {
   position: absolute; top: 100%; left: 0; right: 0; z-index: 10;
   background: var(--bg-surface); border: 1px solid var(--border);
@@ -85,6 +117,5 @@ function onBlur() {
 }
 .dropdown-item:hover { background: var(--bg-base); }
 .dropdown-item.active { color: var(--blue); }
-.ns-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ns-counts { font-size: 9px; color: var(--text-muted); white-space: nowrap; margin-left: 8px; }
 </style>

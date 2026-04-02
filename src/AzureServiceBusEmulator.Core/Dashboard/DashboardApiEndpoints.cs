@@ -23,7 +23,8 @@ public static class DashboardApiEndpoints
                 return new NamespaceInfo(
                     name,
                     ns?.GetQueues().Count ?? 0,
-                    ns?.GetTopics().Count ?? 0);
+                    ns?.GetTopics().Count ?? 0,
+                    ns?.LastActivityAt ?? DateTimeOffset.MinValue);
             }).ToList();
         });
 

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, onUnmounted } from 'vue'
+import { onMounted, onUnmounted, watch } from 'vue'
 import NamespaceSelector from './NamespaceSelector.vue'
 import { useEntities } from '../composables/useEntities'
 
@@ -8,11 +8,17 @@ const entity = defineModel<string | null>('entity', { required: true })
 const entityType = defineModel<'queue' | 'topic' | null>('entityType', { required: true })
 const emit = defineEmits<{ select: [] }>()
 
-const { namespaces, filter, topicGroups, filteredQueues, toggleGroup, isCollapsed, startPolling, stopPolling } =
+const { namespaces, loading, filter, topicGroups, filteredQueues, toggleGroup, isCollapsed, startPolling, stopPolling, onNamespaceChange } =
   useEntities(() => ns.value)
 
 onMounted(startPolling)
 onUnmounted(stopPolling)
+
+watch(ns, () => {
+  entity.value = null
+  entityType.value = null
+  onNamespaceChange()
+})
 
 function selectEntity(name: string, type: 'queue' | 'topic') {
   entity.value = name
@@ -35,6 +41,8 @@ function shortName(fullName: string) {
     </div>
 
     <div class="tree">
+      <div v-if="loading" class="loading">Loading entities...</div>
+      <template v-else>
       <div class="section-header">Queues</div>
       <div
         v-for="q in filteredQueues" :key="q.name"
@@ -71,6 +79,7 @@ function shortName(fullName: string) {
           </template>
         </template>
       </template>
+      </template>
     </div>
 
     <div class="footer">
@@ -99,5 +108,7 @@ function shortName(fullName: string) {
 .sub-row.selected { color: var(--blue); }
 .forward-to { color: var(--text-muted); font-size: 9px; margin-left: 4px; }
 .badge-red { background: var(--red); color: var(--bg-crust); border-radius: 8px; padding: 0 6px; font-size: 10px; margin-left: 4px; }
+.loading { padding: 20px; text-align: center; color: var(--text-muted); font-size: 11px; animation: pulse 1.5s ease-in-out infinite; }
+@keyframes pulse { 0%, 100% { opacity: 0.4; } 50% { opacity: 1; } }
 .footer { border-top: 1px solid var(--border); padding: 8px 12px; background: var(--bg-mantle); font-size: 10px; color: var(--text-muted); }
 </style>

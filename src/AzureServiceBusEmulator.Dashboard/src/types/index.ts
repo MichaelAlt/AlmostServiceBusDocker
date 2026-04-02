@@ -2,6 +2,7 @@ export interface NamespaceInfo {
   name: string
   queueCount: number
   topicCount: number
+  lastActivityAt: string
 }
 
 export interface EntityOverview {
