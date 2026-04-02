@@ -60,7 +60,7 @@ public class ReceiverLinkEndpoint : LinkEndpoint
                 var brokered = _queue.TryDequeueImmediate();
                 if (brokered is null)
                 {
-                    await Task.Delay(50, ct);
+                    await Task.Delay(10, ct);
                     continue;
                 }
 
