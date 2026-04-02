@@ -30,7 +30,13 @@ public class ReceiverLinkEndpoint : LinkEndpoint
         if (_pumpTask is null || _pumpTask.IsCompleted)
         {
             _pumpCts = new CancellationTokenSource();
-            _pumpTask = Task.Run(() => MessagePumpAsync(flowContext.Link, _pumpCts.Token));
+            var link = flowContext.Link;
+
+            // Cancel the pump when the link OR connection closes.
+            link.Closed += (_, __) => _pumpCts?.Cancel();
+            link.Session.Connection.Closed += (_, __) => _pumpCts?.Cancel();
+
+            _pumpTask = Task.Run(() => MessagePumpAsync(link, _pumpCts.Token));
         }
     }
 
@@ -38,15 +44,32 @@ public class ReceiverLinkEndpoint : LinkEndpoint
     {
         try
         {
-            while (!ct.IsCancellationRequested && !link.IsClosed)
+            while (!ct.IsCancellationRequested)
             {
-                var brokered = await _queue.DequeueAsync(ct);
-                var amqpMessage = ConvertToAmqpMessage(brokered);
-                link.SendMessage(amqpMessage);
+                // Use TryDequeueImmediate + short delay instead of blocking DequeueAsync.
+                // Blocking DequeueAsync prevents AMQPNetLite from closing the link/connection
+                // during graceful shutdown, causing a 30-second timeout.
+                var brokered = _queue.TryDequeueImmediate();
+                if (brokered is null)
+                {
+                    await Task.Delay(50, ct);
+                    continue;
+                }
+
+                try
+                {
+                    var amqpMessage = ConvertToAmqpMessage(brokered);
+                    link.SendMessage(amqpMessage);
+                }
+                catch
+                {
+                    // Send failed — link is dead. Re-enqueue and stop.
+                    _queue.Enqueue(brokered);
+                    break;
+                }
             }
         }
         catch (OperationCanceledException) { }
-        catch (AmqpException) { }
         catch { }
     }
 

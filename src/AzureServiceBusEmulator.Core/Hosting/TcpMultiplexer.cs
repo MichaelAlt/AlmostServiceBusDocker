@@ -65,7 +65,6 @@ public class TcpMultiplexer
         {
             var stream = client.GetStream();
 
-            // Peek the first byte to determine if this is TLS or plain AMQP
             var firstByte = new byte[1];
             var read = await stream.ReadAsync(firstByte.AsMemory(0, 1), ct);
             if (read == 0)
@@ -103,8 +102,6 @@ public class TcpMultiplexer
 
     private async Task HandleTlsConnection(TcpClient client, NetworkStream rawStream, byte[] peekedByte, CancellationToken ct)
     {
-        // Wrap the raw stream in a PrefixedStream that replays the peeked byte,
-        // then wrap that in SslStream to terminate TLS.
         var prefixedStream = new PrefixedStream(rawStream, peekedByte);
         var sslStream = new SslStream(prefixedStream, leaveInnerStreamOpen: false);
 
@@ -140,7 +137,7 @@ public class TcpMultiplexer
         }
         else
         {
-            // No ALPN or unknown — peek the first decrypted byte to decide
+            // No ALPN — peek the first decrypted byte to decide
             var innerByte = new byte[1];
             var read = await sslStream.ReadAsync(innerByte.AsMemory(0, 1), ct);
             if (read == 0)
@@ -151,7 +148,6 @@ public class TcpMultiplexer
 
             backendPort = innerByte[0] == AmqpByte ? _amqpPort : _httpPort;
 
-            // Connect to backend and send the peeked inner byte
             var be = await ConnectToBackend(backendPort, ct);
             var beStream = be.GetStream();
             await beStream.WriteAsync(innerByte.AsMemory(0, 1), ct);
@@ -176,19 +172,23 @@ public class TcpMultiplexer
         Stream clientStream, NetworkStream backendStream,
         TcpClient client, TcpClient backend, CancellationToken ct)
     {
-        var clientToBackend = clientStream.CopyToAsync(backendStream, ct)
-            .ContinueWith(_ =>
-            {
-                try { backend.Client.Shutdown(SocketShutdown.Send); } catch { }
-            }, TaskContinuationOptions.OnlyOnRanToCompletion);
+        var clientToBackend = clientStream.CopyToAsync(backendStream, ct);
+        var backendToClient = backendStream.CopyToAsync(clientStream, ct);
 
-        var backendToClient = backendStream.CopyToAsync(clientStream, ct)
-            .ContinueWith(_ =>
-            {
-                try { client.Client.Shutdown(SocketShutdown.Send); } catch { }
-            }, TaskContinuationOptions.OnlyOnRanToCompletion);
+        // When one direction completes, give the other a few seconds
+        // for the AMQP close handshake, then force-close.
+        await Task.WhenAny(clientToBackend, backendToClient);
 
-        await Task.WhenAll(clientToBackend, backendToClient);
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(2));
+        try
+        {
+            await Task.WhenAll(clientToBackend, backendToClient)
+                .WaitAsync(timeout.Token);
+        }
+        catch { }
+
+        try { client.Client.Shutdown(SocketShutdown.Both); } catch { }
+        try { backend.Client.Shutdown(SocketShutdown.Both); } catch { }
     }
 
     /// <summary>
