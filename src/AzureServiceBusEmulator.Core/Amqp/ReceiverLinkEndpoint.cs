@@ -95,7 +95,7 @@ public class ReceiverLinkEndpoint : LinkEndpoint
 
     public override void OnDisposition(DispositionContext dispositionContext)
     {
-        var lockToken = GetLockToken(dispositionContext.Message);
+        var lockToken = GetLockTokenStatic(dispositionContext.Message);
         var stateInfo = dispositionContext.DeliveryState switch
         {
             Rejected r => $"Rejected: {r.Error?.Condition} {r.Error?.Description}",
@@ -236,7 +236,7 @@ public class ReceiverLinkEndpoint : LinkEndpoint
         return message;
     }
 
-    private static string? GetLockToken(Message message)
+    internal static string? GetLockTokenStatic(Message message)
     {
         if (message.MessageAnnotations?.Map is not null
             && message.MessageAnnotations.Map.TryGetValue(new Symbol("x-opt-lock-token"), out var token))
