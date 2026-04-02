@@ -507,4 +507,159 @@ public abstract class ConformanceTestBase : IAsyncLifetime
 
         await receiver.CompleteMessageAsync(msg);
     }
+
+    // ══════════════════════════════════════════════════════════════════════════
+    // Test 10: Two messages via topic subscription to same queue (Helix pattern)
+    // ══════════════════════════════════════════════════════════════════════════
+
+    [Fact]
+    public async Task TwoMessages_ViaTopicSubscription_BothProcessedByProcessor()
+    {
+        ThrowIfSkipped();
+
+        // Setup: topic → subscription → consumer queue (same as MassTransit pattern)
+        var queue = await CreateTestQueueAsync();
+        var topic = await CreateTestTopicAsync();
+        await CreateTestSubscriptionAsync(topic, "consumer-sub", forwardTo: queue);
+
+        // Send two messages to the topic (simulates two events published by outbox)
+        await using var sender = Client.CreateSender(topic);
+        await sender.SendMessageAsync(new ServiceBusMessage("event-1") { MessageId = "msg-1" });
+        await sender.SendMessageAsync(new ServiceBusMessage("event-2") { MessageId = "msg-2" });
+
+        // Process with a ServiceBusProcessor (MaxConcurrentCalls=1, like MassTransit)
+        var received = new ConcurrentBag<string>();
+        var allReceived = new TaskCompletionSource<bool>();
+
+        await using var processor = Client.CreateProcessor(queue, new ServiceBusProcessorOptions
+        {
+            MaxConcurrentCalls = 1,
+            ReceiveMode = ServiceBusReceiveMode.PeekLock,
+            AutoCompleteMessages = false,
+        });
+
+        processor.ProcessMessageAsync += async args =>
+        {
+            var body = args.Message.Body.ToString();
+            received.Add(body);
+            await args.CompleteMessageAsync(args.Message);
+            if (received.Count >= 2)
+                allReceived.TrySetResult(true);
+        };
+
+        processor.ProcessErrorAsync += args =>
+        {
+            // Log but don't fail — we want to see what happens
+            Console.WriteLine($"[CONFORMANCE] Processor error: {args.Exception.GetType().Name}: {args.Exception.Message}");
+            return Task.CompletedTask;
+        };
+
+        await processor.StartProcessingAsync();
+
+        // Wait for both messages — 10 second timeout
+        var completed = await Task.WhenAny(allReceived.Task, Task.Delay(TimeSpan.FromSeconds(10)));
+        await processor.StopProcessingAsync();
+
+        Assert.True(completed == allReceived.Task, $"Expected 2 messages but got {received.Count}: [{string.Join(", ", received)}]");
+        Assert.Contains("event-1", received);
+        Assert.Contains("event-2", received);
+    }
+
+    // ══════════════════════════════════════════════════════════════════════════
+    // Test 11: Multiple subscriptions on same topic — no cross-delivery
+    // ══════════════════════════════════════════════════════════════════════════
+
+    [Fact]
+    public async Task MultipleSubscriptions_SameTopic_EachQueueGetsExactlyOneCopy()
+    {
+        ThrowIfSkipped();
+
+        // Setup: 1 topic, 3 subscriptions, each forwarding to a different queue
+        var queue1 = await CreateTestQueueAsync();
+        var queue2 = await CreateTestQueueAsync();
+        var queue3 = await CreateTestQueueAsync();
+        var topic = await CreateTestTopicAsync();
+
+        await CreateTestSubscriptionAsync(topic, "sub1", forwardTo: queue1);
+        await CreateTestSubscriptionAsync(topic, "sub2", forwardTo: queue2);
+        await CreateTestSubscriptionAsync(topic, "sub3", forwardTo: queue3);
+
+        // Publish ONE message to the topic
+        await using var sender = Client.CreateSender(topic);
+        await sender.SendMessageAsync(new ServiceBusMessage("single-event") { MessageId = "unique-msg" });
+
+        // Each queue should get exactly ONE copy
+        await using var receiver1 = Client.CreateReceiver(queue1);
+        await using var receiver2 = Client.CreateReceiver(queue2);
+        await using var receiver3 = Client.CreateReceiver(queue3);
+
+        var msg1 = await receiver1.ReceiveMessageAsync(TimeSpan.FromSeconds(5));
+        var msg2 = await receiver2.ReceiveMessageAsync(TimeSpan.FromSeconds(5));
+        var msg3 = await receiver3.ReceiveMessageAsync(TimeSpan.FromSeconds(5));
+
+        Assert.NotNull(msg1);
+        Assert.NotNull(msg2);
+        Assert.NotNull(msg3);
+
+        Assert.Equal("single-event", msg1.Body.ToString());
+        Assert.Equal("single-event", msg2.Body.ToString());
+        Assert.Equal("single-event", msg3.Body.ToString());
+
+        // Complete all
+        await receiver1.CompleteMessageAsync(msg1);
+        await receiver2.CompleteMessageAsync(msg2);
+        await receiver3.CompleteMessageAsync(msg3);
+
+        // Verify NO additional messages on any queue (no duplicates)
+        var extra1 = await receiver1.ReceiveMessageAsync(TimeSpan.FromSeconds(2));
+        var extra2 = await receiver2.ReceiveMessageAsync(TimeSpan.FromSeconds(2));
+        var extra3 = await receiver3.ReceiveMessageAsync(TimeSpan.FromSeconds(2));
+
+        Assert.Null(extra1);
+        Assert.Null(extra2);
+        Assert.Null(extra3);
+    }
+
+    // ══════════════════════════════════════════════════════════════════════════
+    // Test 12: Many subscriptions forwarding to same queue — no duplicates
+    // ══════════════════════════════════════════════════════════════════════════
+
+    [Fact]
+    public async Task ManySubscriptions_OneForwardingToQueue_OnlyOneDelivery()
+    {
+        ThrowIfSkipped();
+
+        // Simulate MassTransit pattern: topic has sub for real consumer + sub for test consumer
+        // Only the test sub forwards to our queue. The other sub forwards elsewhere.
+        var testQueue = await CreateTestQueueAsync();
+        var otherQueue = await CreateTestQueueAsync();
+        var topic = await CreateTestTopicAsync();
+
+        await CreateTestSubscriptionAsync(topic, "test-sub", forwardTo: testQueue);
+        await CreateTestSubscriptionAsync(topic, "other-sub", forwardTo: otherQueue);
+
+        // Publish a message
+        await using var sender = Client.CreateSender(topic);
+        await sender.SendMessageAsync(new ServiceBusMessage("test-msg") { MessageId = "test-msg-1" });
+
+        // testQueue should get exactly ONE message
+        await using var testReceiver = Client.CreateReceiver(testQueue);
+        var msg = await testReceiver.ReceiveMessageAsync(TimeSpan.FromSeconds(5));
+        Assert.NotNull(msg);
+        Assert.Equal("test-msg", msg.Body.ToString());
+        await testReceiver.CompleteMessageAsync(msg);
+
+        // No duplicate
+        var dup = await testReceiver.ReceiveMessageAsync(TimeSpan.FromSeconds(2));
+        Assert.Null(dup);
+
+        // otherQueue should also get exactly ONE message
+        await using var otherReceiver = Client.CreateReceiver(otherQueue);
+        var otherMsg = await otherReceiver.ReceiveMessageAsync(TimeSpan.FromSeconds(5));
+        Assert.NotNull(otherMsg);
+        await otherReceiver.CompleteMessageAsync(otherMsg);
+
+        var otherDup = await otherReceiver.ReceiveMessageAsync(TimeSpan.FromSeconds(2));
+        Assert.Null(otherDup);
+    }
 }
