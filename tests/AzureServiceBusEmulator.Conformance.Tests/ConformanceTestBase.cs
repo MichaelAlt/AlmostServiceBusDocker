@@ -702,4 +702,142 @@ public abstract class ConformanceTestBase : IAsyncLifetime
         var dup = await receiver.ReceiveMessageAsync(TimeSpan.FromSeconds(3));
         Assert.Null(dup);
     }
+
+    // ══════════════════════════════════════════════════════════════════════════
+    // Test 14: Sustained throughput — 20 msg/sec for 30 seconds
+    // ══════════════════════════════════════════════════════════════════════════
+
+    [Fact]
+    public async Task SustainedThroughput_20PerSecond_AllReceived()
+    {
+        ThrowIfSkipped();
+
+        var queue = await CreateTestQueueAsync();
+        var totalMessages = 600; // 20/sec × 30 sec
+        var sendDuration = TimeSpan.FromSeconds(30);
+        var sendInterval = sendDuration / totalMessages; // 50ms between sends
+
+        // Start processor first so it's ready to receive
+        var received = new ConcurrentBag<string>();
+        var allReceived = new TaskCompletionSource<bool>();
+
+        await using var processor = Client.CreateProcessor(queue, new ServiceBusProcessorOptions
+        {
+            MaxConcurrentCalls = 10,
+            ReceiveMode = ServiceBusReceiveMode.PeekLock,
+            AutoCompleteMessages = false,
+        });
+
+        processor.ProcessMessageAsync += async args =>
+        {
+            received.Add(args.Message.MessageId);
+            await args.CompleteMessageAsync(args.Message);
+            if (received.Count >= totalMessages)
+                allReceived.TrySetResult(true);
+        };
+
+        processor.ProcessErrorAsync += args =>
+        {
+            Console.WriteLine($"[THROUGHPUT] Error: {args.Exception.GetType().Name}: {args.Exception.Message}");
+            return Task.CompletedTask;
+        };
+
+        await processor.StartProcessingAsync();
+
+        // Send messages at ~20/sec
+        await using var sender = Client.CreateSender(queue);
+        var sendStart = Stopwatch.StartNew();
+        var sent = 0;
+
+        for (int i = 0; i < totalMessages; i++)
+        {
+            await sender.SendMessageAsync(new ServiceBusMessage($"msg-{i}") { MessageId = $"throughput-{i}" });
+            sent++;
+
+            // Pace to ~20/sec
+            var elapsed = sendStart.Elapsed;
+            var expectedElapsed = TimeSpan.FromMilliseconds(i * sendInterval.TotalMilliseconds);
+            if (elapsed < expectedElapsed)
+                await Task.Delay(expectedElapsed - elapsed);
+
+            // Progress every 100
+            if (sent % 100 == 0)
+                Console.WriteLine($"[THROUGHPUT] Sent {sent}/{totalMessages}, received {received.Count}");
+        }
+
+        Console.WriteLine($"[THROUGHPUT] All {sent} sent in {sendStart.Elapsed.TotalSeconds:F1}s. Waiting for receive...");
+
+        // Wait for all to be received — give 60 seconds after send completes
+        var completed = await Task.WhenAny(allReceived.Task, Task.Delay(TimeSpan.FromSeconds(60)));
+        await processor.StopProcessingAsync();
+
+        var receivedCount = received.Count;
+        var uniqueCount = received.Distinct().Count();
+        Console.WriteLine($"[THROUGHPUT] Received: {receivedCount}, Unique: {uniqueCount}, Duplicates: {receivedCount - uniqueCount}");
+
+        Assert.True(completed == allReceived.Task,
+            $"Expected {totalMessages} messages but received {receivedCount} ({uniqueCount} unique) after 60s wait. Missing: {totalMessages - uniqueCount}");
+        Assert.Equal(totalMessages, uniqueCount);
+    }
+
+    // ══════════════════════════════════════════════════════════════════════════
+    // Test 15: Burst send — 60 messages as fast as possible, all received
+    // ══════════════════════════════════════════════════════════════════════════
+
+    [Fact]
+    public async Task BurstSend_60Messages_AllReceived()
+    {
+        ThrowIfSkipped();
+
+        var queue = await CreateTestQueueAsync();
+        var totalMessages = 60;
+
+        // Start processor
+        var received = new ConcurrentBag<string>();
+        var allReceived = new TaskCompletionSource<bool>();
+
+        await using var processor = Client.CreateProcessor(queue, new ServiceBusProcessorOptions
+        {
+            MaxConcurrentCalls = 10,
+            ReceiveMode = ServiceBusReceiveMode.PeekLock,
+            AutoCompleteMessages = false,
+        });
+
+        processor.ProcessMessageAsync += async args =>
+        {
+            received.Add(args.Message.MessageId);
+            await args.CompleteMessageAsync(args.Message);
+            if (received.Count >= totalMessages)
+                allReceived.TrySetResult(true);
+        };
+
+        processor.ProcessErrorAsync += args =>
+        {
+            Console.WriteLine($"[BURST] Error: {args.Exception.GetType().Name}: {args.Exception.Message}");
+            return Task.CompletedTask;
+        };
+
+        await processor.StartProcessingAsync();
+
+        // Burst send — all 60 as fast as possible
+        await using var sender = Client.CreateSender(queue);
+        var sw = Stopwatch.StartNew();
+        for (int i = 0; i < totalMessages; i++)
+        {
+            await sender.SendMessageAsync(new ServiceBusMessage($"burst-{i}") { MessageId = $"burst-{i}" });
+        }
+        Console.WriteLine($"[BURST] Sent {totalMessages} in {sw.ElapsedMilliseconds}ms");
+
+        // Wait for all received
+        var completed = await Task.WhenAny(allReceived.Task, Task.Delay(TimeSpan.FromSeconds(30)));
+        await processor.StopProcessingAsync();
+
+        var receivedCount = received.Count;
+        var uniqueCount = received.Distinct().Count();
+        Console.WriteLine($"[BURST] Received: {receivedCount}, Unique: {uniqueCount}");
+
+        Assert.True(completed == allReceived.Task,
+            $"Expected {totalMessages} but received {receivedCount} ({uniqueCount} unique)");
+        Assert.Equal(totalMessages, uniqueCount);
+    }
 }
