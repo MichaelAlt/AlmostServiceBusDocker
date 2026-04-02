@@ -16,6 +16,7 @@ public sealed class QueueEntity
     private readonly bool _isDeadLetterQueue;
     private QueueEntity? _deadLetterQueue;
     private int _messageCount;
+    private long _sequenceNumber;
     private MessageEventBus? _eventBus;
     private string? _namespaceName;
     private string? _entityName;
@@ -91,6 +92,11 @@ public sealed class QueueEntity
     public void Enqueue(BrokeredMessage message)
     {
         message.LockToken ??= Guid.NewGuid().ToString();
+        // Ensure every message has a unique sequence number — the Azure SDK uses this
+        // as the transport message ID for deduplication. Clone() resets SequenceNumber
+        // to 0, so messages arriving via topic subscription forwarding need a fresh one.
+        if (message.SequenceNumber == 0)
+            message.SequenceNumber = Interlocked.Increment(ref _sequenceNumber);
         _channel.Writer.TryWrite(message);
         _allMessages[message.LockToken!] = message;
         Interlocked.Increment(ref _messageCount);

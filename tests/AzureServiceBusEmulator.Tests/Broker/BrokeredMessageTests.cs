@@ -89,7 +89,8 @@ public class BrokeredMessageTests
         Assert.Equal(original.To, clone.To);
         Assert.Equal(original.ScheduledEnqueueTimeUtc, clone.ScheduledEnqueueTimeUtc);
         Assert.Equal(original.TimeToLive, clone.TimeToLive);
-        Assert.Equal(original.LockToken, clone.LockToken);
+        // LockToken is intentionally NOT copied — each queue assigns a fresh one
+        Assert.Null(clone.LockToken);
 
         // DeliveryCount and SequenceNumber should be reset
         Assert.Equal(0, clone.DeliveryCount);

@@ -662,4 +662,44 @@ public abstract class ConformanceTestBase : IAsyncLifetime
         var otherDup = await otherReceiver.ReceiveMessageAsync(TimeSpan.FromSeconds(2));
         Assert.Null(otherDup);
     }
+
+    // ══════════════════════════════════════════════════════════════════════════
+    // Test 13: MassTransit-scale — many topics, each with a sub forwarding to
+    // same consumer queue. Publish to ONE topic, verify only ONE delivery.
+    // ══════════════════════════════════════════════════════════════════════════
+
+    [Fact]
+    public async Task ManyTopics_OneSubEach_ForwardToSameQueue_NoDuplicates()
+    {
+        ThrowIfSkipped();
+
+        // Create a consumer queue (like MassTransit's "test" endpoint)
+        var consumerQueue = await CreateTestQueueAsync();
+
+        // Create 20 topics, each with a subscription forwarding to the same queue
+        // (simulates MassTransit's TestConsumer subscribing to many event types)
+        var topics = new List<string>();
+        for (int i = 0; i < 20; i++)
+        {
+            var topic = await CreateTestTopicAsync();
+            await CreateTestSubscriptionAsync(topic, "consumer-sub", forwardTo: consumerQueue);
+            topics.Add(topic);
+        }
+
+        // Publish ONE message to topic[5] only
+        await using var sender = Client.CreateSender(topics[5]);
+        await sender.SendMessageAsync(new ServiceBusMessage("targeted-event") { MessageId = "single-publish" });
+
+        // Consumer queue should get exactly ONE message
+        await using var receiver = Client.CreateReceiver(consumerQueue);
+        var msg = await receiver.ReceiveMessageAsync(TimeSpan.FromSeconds(5));
+        Assert.NotNull(msg);
+        Assert.Equal("targeted-event", msg.Body.ToString());
+        Assert.Equal("single-publish", msg.MessageId);
+        await receiver.CompleteMessageAsync(msg);
+
+        // No duplicate
+        var dup = await receiver.ReceiveMessageAsync(TimeSpan.FromSeconds(3));
+        Assert.Null(dup);
+    }
 }

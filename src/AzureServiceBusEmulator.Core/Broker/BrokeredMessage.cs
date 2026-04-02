@@ -79,7 +79,9 @@ public sealed class BrokeredMessage
             To = To,
             ScheduledEnqueueTimeUtc = ScheduledEnqueueTimeUtc,
             TimeToLive = TimeToLive,
-            LockToken = LockToken,
+            // LockToken intentionally NOT copied — each queue assigns a fresh one on Enqueue.
+            // Copying it causes duplicate delivery tags when the same message is cloned
+            // to multiple subscriptions forwarding to the same queue.
             DeadLetterReason = DeadLetterReason,
             DeadLetterErrorDescription = DeadLetterErrorDescription,
             EnqueuedTimeUtc = EnqueuedTimeUtc,
