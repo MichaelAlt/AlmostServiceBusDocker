@@ -26,6 +26,17 @@ public class ServiceBusLinkProcessor : ILinkProcessor
         // Link.Role == false means the server-side link is a sender (client is receiving)
         var isServerReceiver = attachContext.Link.Role;
 
+        // Reject transaction coordinator links — we don't support AMQP transactions.
+        // NServiceBus and other frameworks open coordinator links for transactional sends.
+        if (attachContext.Attach.Target is global::Amqp.Transactions.Coordinator)
+        {
+            attachContext.Complete(new Error(new Symbol("amqp:not-implemented"))
+            {
+                Description = "AMQP transactions are not supported by the emulator."
+            });
+            return;
+        }
+
         string? address;
         if (isServerReceiver)
         {

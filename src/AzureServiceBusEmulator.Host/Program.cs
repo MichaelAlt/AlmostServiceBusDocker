@@ -86,10 +86,17 @@ if (amqpsPort != publicPort)
     _ = amqpsMultiplexer.StartAsync(multiplexerCts.Token);
 }
 
+// Microsoft emulator compatibility: management API on port 5300
+// The Azure SDK with UseDevelopmentEmulator=true expects HTTP management on 5300
+var mgmtApiPort = 5300;
+var mgmtMultiplexer = new TcpMultiplexer(mgmtApiPort, internalAmqpPort, internalHttpPort, cert);
+_ = mgmtMultiplexer.StartAsync(multiplexerCts.Token);
+
 // ── Shutdown ──
 
 Console.WriteLine($"Azure Service Bus Emulator started");
 Console.WriteLine($"  Service Bus: localhost:{publicPort} (HTTPS/AMQP), localhost:{amqpsPort} (AMQPS)");
+Console.WriteLine($"  Management:  localhost:{mgmtApiPort} (HTTP)");
 Console.WriteLine($"  Dashboard:   http://localhost:{dashboardPort}");
 Console.WriteLine();
 Console.WriteLine($"  Connection String: Endpoint=sb://localhost:{publicPort};SharedAccessKeyName=RootManageSharedAccessKey;SharedAccessKey=emulator");
