@@ -3,6 +3,7 @@
     <Project Path="src/AzureServiceBusEmulator.Core/AzureServiceBusEmulator.Core.csproj" />
     <Project Path="src/AzureServiceBusEmulator.Host/AzureServiceBusEmulator.Host.csproj" />
     <Project Path="src/AzureServiceBusEmulator.TestHost/AzureServiceBusEmulator.TestHost.csproj" />
+    <Project Path="src/AzureServiceBusEmulator.Aspire.Hosting/AzureServiceBusEmulator.Aspire.Hosting.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/AzureServiceBusEmulator.MassTransit.Tests/AzureServiceBusEmulator.MassTransit.Tests.csproj" />
