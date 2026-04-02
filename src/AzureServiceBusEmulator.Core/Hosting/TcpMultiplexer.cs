@@ -175,8 +175,6 @@ public class TcpMultiplexer
         var clientToBackend = clientStream.CopyToAsync(backendStream, ct);
         var backendToClient = backendStream.CopyToAsync(clientStream, ct);
 
-        // When one direction completes, give the other a few seconds
-        // for the AMQP close handshake, then force-close.
         await Task.WhenAny(clientToBackend, backendToClient);
 
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(2));

@@ -27,12 +27,20 @@ public class ReceiverLinkEndpoint : LinkEndpoint
 
     public override void OnFlow(FlowContext flowContext)
     {
+        // When the client sends drain=true, it wants to stop receiving.
+        // Complete the drain immediately so the client can close the link.
+        if (flowContext.Link.IsDraining)
+        {
+            _pumpCts?.Cancel();
+            flowContext.Link.CompleteDrain();
+            return;
+        }
+
         if (_pumpTask is null || _pumpTask.IsCompleted)
         {
             _pumpCts = new CancellationTokenSource();
             var link = flowContext.Link;
 
-            // Cancel the pump when the link OR connection closes.
             link.Closed += (_, __) => _pumpCts?.Cancel();
             link.Session.Connection.Closed += (_, __) => _pumpCts?.Cancel();
 
