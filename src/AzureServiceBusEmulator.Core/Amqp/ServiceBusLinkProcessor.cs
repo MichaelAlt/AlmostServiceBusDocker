@@ -86,6 +86,18 @@ public class ServiceBusLinkProcessor : ILinkProcessor
         }
         else
         {
+            // Check for session filter on receiver link
+            if (attachContext.Attach.Source is Source src && src.FilterSet is Map filterMap)
+            {
+                var sessionFilterKey = new Symbol("com.microsoft:session-filter");
+                if (filterMap.ContainsKey(sessionFilterKey))
+                {
+                    var requestedSessionId = filterMap[sessionFilterKey] as string;
+                    HandleSessionReceiver(attachContext, context, address, requestedSessionId);
+                    return;
+                }
+            }
+
             // Client is receiving messages from us -- resolve queue
             var queue = context.ResolveQueue(address);
             if (queue is null)
@@ -100,6 +112,44 @@ public class ServiceBusLinkProcessor : ILinkProcessor
             var endpoint = new ReceiverLinkEndpoint(queue);
             attachContext.Complete(endpoint, 0);
         }
+    }
+
+    private void HandleSessionReceiver(AttachContext attachContext, NamespaceContext ns, string address, string? requestedSessionId)
+    {
+        var queue = ns.ResolveQueue(address);
+        if (queue is null || !queue.RequiresSession || queue.Sessions is null)
+        {
+            attachContext.Complete(new Error(new Symbol("amqp:not-found"))
+            {
+                Description = $"Session-enabled queue '{address}' not found."
+            });
+            return;
+        }
+
+        // Set max message size
+        attachContext.Attach.MaxMessageSize = 256 * 1024;
+
+        var receiverId = attachContext.Link.Name ?? Guid.NewGuid().ToString();
+        var session = queue.Sessions.TryAcceptSession(requestedSessionId, receiverId);
+
+        if (session is null)
+        {
+            attachContext.Complete(new Error(new Symbol("com.microsoft:timeout"))
+            {
+                Description = requestedSessionId is not null
+                    ? $"Session '{requestedSessionId}' is not available."
+                    : "No sessions are available."
+            });
+            return;
+        }
+
+        // Set the accepted session ID in the attach properties so the SDK knows which session was locked
+        attachContext.Attach.Properties ??= new Fields();
+        attachContext.Attach.Properties[new Symbol("com.microsoft:locked-until-utc")] = session.LockedUntil.UtcDateTime;
+        attachContext.Attach.Properties[new Symbol("com.microsoft:session-id")] = session.SessionId;
+
+        var endpoint = new SessionReceiverLinkEndpoint(queue, session);
+        attachContext.Complete(endpoint, 0);
     }
 
     /// <summary>
