@@ -1036,4 +1036,50 @@ public abstract class ConformanceTestBase : IAsyncLifetime
 
         await dlqReceiver.CompleteMessageAsync(dlqMsg);
     }
+
+    // ══════════════════════════════════════════════════════════════════════════
+    // Test 20: Duplicate Detection
+    // ══════════════════════════════════════════════════════════════════════════
+
+    [Fact]
+    public async Task DuplicateDetection_SilentlyDropsDuplicateMessages()
+    {
+        ThrowIfSkipped();
+
+        var queueOptions = new CreateQueueOptions("placeholder")
+        {
+            RequiresDuplicateDetection = true,
+            DuplicateDetectionHistoryTimeWindow = TimeSpan.FromMinutes(5)
+        };
+        var queue = await CreateTestQueueAsync(queueOptions);
+
+        await using var sender = Client.CreateSender(queue);
+
+        // Send a message with a specific MessageId
+        await sender.SendMessageAsync(new ServiceBusMessage("first") { MessageId = "dedup-1" });
+
+        // Send the same MessageId again — should be silently dropped
+        await sender.SendMessageAsync(new ServiceBusMessage("duplicate") { MessageId = "dedup-1" });
+
+        // Send a different MessageId — should be delivered
+        await sender.SendMessageAsync(new ServiceBusMessage("second") { MessageId = "dedup-2" });
+
+        await using var receiver = Client.CreateReceiver(queue);
+
+        var msg1 = await receiver.ReceiveMessageAsync(TimeSpan.FromSeconds(5));
+        Assert.NotNull(msg1);
+        Assert.Equal("first", msg1.Body.ToString());
+        Assert.Equal("dedup-1", msg1.MessageId);
+        await receiver.CompleteMessageAsync(msg1);
+
+        var msg2 = await receiver.ReceiveMessageAsync(TimeSpan.FromSeconds(5));
+        Assert.NotNull(msg2);
+        Assert.Equal("second", msg2.Body.ToString());
+        Assert.Equal("dedup-2", msg2.MessageId);
+        await receiver.CompleteMessageAsync(msg2);
+
+        // No more messages (the duplicate was dropped)
+        var extra = await receiver.ReceiveMessageAsync(TimeSpan.FromSeconds(2));
+        Assert.Null(extra);
+    }
 }

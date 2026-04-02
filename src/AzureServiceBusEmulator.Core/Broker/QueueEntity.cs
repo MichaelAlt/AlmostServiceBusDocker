@@ -13,6 +13,7 @@ public sealed class QueueEntity
     private readonly Channel<BrokeredMessage> _channel;
     private readonly ConcurrentDictionary<string, BrokeredMessage> _pending = new();
     private readonly ConcurrentDictionary<string, BrokeredMessage> _allMessages = new();
+    private readonly ConcurrentDictionary<string, DateTimeOffset> _recentMessageIds = new();
     private readonly bool _isDeadLetterQueue;
     private QueueEntity? _deadLetterQueue;
     private int _messageCount;
@@ -57,6 +58,10 @@ public sealed class QueueEntity
 
     public TimeSpan? AutoDeleteOnIdle { get; set; }
 
+    public bool RequiresDuplicateDetection { get; set; }
+
+    public TimeSpan DuplicateDetectionHistoryTimeWindow { get; set; } = TimeSpan.FromMinutes(10);
+
     public string? UserMetadata { get; set; }
 
     /// <summary>
@@ -96,9 +101,24 @@ public sealed class QueueEntity
 
     /// <summary>
     /// Enqueues a message, assigning a lock token if one is not already set.
+    /// When duplicate detection is enabled, silently drops messages with a
+    /// MessageId that was seen within the <see cref="DuplicateDetectionHistoryTimeWindow"/>.
     /// </summary>
     public void Enqueue(BrokeredMessage message)
     {
+        // Duplicate detection: silently ignore messages with recently-seen MessageIds.
+        if (RequiresDuplicateDetection && !string.IsNullOrEmpty(message.MessageId))
+        {
+            PurgeExpiredDuplicateEntries();
+
+            var now = DateTimeOffset.UtcNow;
+            if (!_recentMessageIds.TryAdd(message.MessageId, now))
+            {
+                // MessageId already seen within the window — silently drop
+                return;
+            }
+        }
+
         message.LockToken ??= Guid.NewGuid().ToString();
         // Ensure every message has a unique sequence number — the Azure SDK uses this
         // as the transport message ID for deduplication. Clone() resets SequenceNumber
@@ -113,6 +133,19 @@ public sealed class QueueEntity
             message.MessageId, message.SequenceNumber, message.ContentType,
             TruncateBody(message), ExtractScalars(message),
             DateTimeOffset.UtcNow));
+    }
+
+    /// <summary>
+    /// Removes expired entries from the duplicate detection history.
+    /// </summary>
+    private void PurgeExpiredDuplicateEntries()
+    {
+        var cutoff = DateTimeOffset.UtcNow - DuplicateDetectionHistoryTimeWindow;
+        foreach (var (messageId, timestamp) in _recentMessageIds)
+        {
+            if (timestamp < cutoff)
+                _recentMessageIds.TryRemove(messageId, out _);
+        }
     }
 
     /// <summary>

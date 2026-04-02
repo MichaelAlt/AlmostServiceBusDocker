@@ -442,6 +442,9 @@ public static class ManagementApiEndpoints
             entity.ForwardTo = props.ForwardTo;
             entity.UserMetadata = props.UserMetadata;
             entity.AutoDeleteOnIdle = props.AutoDeleteOnIdle;
+            entity.RequiresDuplicateDetection = props.RequiresDuplicateDetection;
+            if (props.DuplicateDetectionHistoryTimeWindow.HasValue)
+                entity.DuplicateDetectionHistoryTimeWindow = props.DuplicateDetectionHistoryTimeWindow.Value;
         }
         catch
         {
@@ -459,6 +462,9 @@ public static class ManagementApiEndpoints
             entity.EnableBatchedOperations = props.EnableBatchedOperations;
             entity.UserMetadata = props.UserMetadata;
             entity.AutoDeleteOnIdle = props.AutoDeleteOnIdle;
+            entity.RequiresDuplicateDetection = props.RequiresDuplicateDetection;
+            if (props.DuplicateDetectionHistoryTimeWindow.HasValue)
+                entity.DuplicateDetectionHistoryTimeWindow = props.DuplicateDetectionHistoryTimeWindow.Value;
         }
         catch
         {

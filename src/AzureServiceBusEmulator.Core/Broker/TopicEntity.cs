@@ -29,6 +29,10 @@ public sealed class TopicEntity
 
     public TimeSpan? AutoDeleteOnIdle { get; set; }
 
+    public bool RequiresDuplicateDetection { get; set; }
+
+    public TimeSpan DuplicateDetectionHistoryTimeWindow { get; set; } = TimeSpan.FromMinutes(10);
+
     public string? UserMetadata { get; set; }
 
     // --- Subscription management ---

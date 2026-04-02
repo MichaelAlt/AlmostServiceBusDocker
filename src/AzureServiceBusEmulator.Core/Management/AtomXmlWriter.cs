@@ -53,7 +53,9 @@ public static class AtomXmlWriter
             Elem("EnableBatchedOperations", queue.EnableBatchedOperations),
             OptElem("ForwardTo", queue.ForwardTo),
             OptElem("UserMetadata", queue.UserMetadata),
-            queue.AutoDeleteOnIdle.HasValue ? Elem("AutoDeleteOnIdle", FormatTimeSpan(queue.AutoDeleteOnIdle.Value)) : null);
+            queue.AutoDeleteOnIdle.HasValue ? Elem("AutoDeleteOnIdle", FormatTimeSpan(queue.AutoDeleteOnIdle.Value)) : null,
+            queue.RequiresDuplicateDetection ? Elem("RequiresDuplicateDetection", true) : null,
+            queue.RequiresDuplicateDetection ? Elem("DuplicateDetectionHistoryTimeWindow", FormatTimeSpan(queue.DuplicateDetectionHistoryTimeWindow)) : null);
 
         return BuildEntry(queue.Name, desc);
     }
@@ -74,7 +76,9 @@ public static class AtomXmlWriter
             Elem("MaxSizeInMegabytes", topic.MaxSizeInMegabytes),
             Elem("EnableBatchedOperations", topic.EnableBatchedOperations),
             OptElem("UserMetadata", topic.UserMetadata),
-            topic.AutoDeleteOnIdle.HasValue ? Elem("AutoDeleteOnIdle", FormatTimeSpan(topic.AutoDeleteOnIdle.Value)) : null);
+            topic.AutoDeleteOnIdle.HasValue ? Elem("AutoDeleteOnIdle", FormatTimeSpan(topic.AutoDeleteOnIdle.Value)) : null,
+            topic.RequiresDuplicateDetection ? Elem("RequiresDuplicateDetection", true) : null,
+            topic.RequiresDuplicateDetection ? Elem("DuplicateDetectionHistoryTimeWindow", FormatTimeSpan(topic.DuplicateDetectionHistoryTimeWindow)) : null);
 
         return BuildEntry(topic.Name, desc);
     }

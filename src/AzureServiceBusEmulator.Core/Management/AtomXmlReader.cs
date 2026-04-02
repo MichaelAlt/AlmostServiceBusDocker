@@ -16,14 +16,18 @@ public record QueueProperties(
     bool EnableBatchedOperations,
     string? ForwardTo,
     string? UserMetadata,
-    TimeSpan? AutoDeleteOnIdle = null);
+    TimeSpan? AutoDeleteOnIdle = null,
+    bool RequiresDuplicateDetection = false,
+    TimeSpan? DuplicateDetectionHistoryTimeWindow = null);
 
 public record TopicProperties(
     TimeSpan DefaultMessageTimeToLive,
     long MaxSizeInMegabytes,
     bool EnableBatchedOperations,
     string? UserMetadata,
-    TimeSpan? AutoDeleteOnIdle = null);
+    TimeSpan? AutoDeleteOnIdle = null,
+    bool RequiresDuplicateDetection = false,
+    TimeSpan? DuplicateDetectionHistoryTimeWindow = null);
 
 public record SubscriptionProperties(
     TimeSpan LockDuration,
@@ -74,7 +78,9 @@ public static class AtomXmlReader
             EnableBatchedOperations: ParseOptionalBool(desc, "EnableBatchedOperations") ?? true,
             ForwardTo: NormalizeForwardTo(ParseOptionalString(desc, "ForwardTo")),
             UserMetadata: ParseOptionalString(desc, "UserMetadata"),
-            AutoDeleteOnIdle: ParseOptionalTimeSpan(desc, "AutoDeleteOnIdle"));
+            AutoDeleteOnIdle: ParseOptionalTimeSpan(desc, "AutoDeleteOnIdle"),
+            RequiresDuplicateDetection: ParseOptionalBool(desc, "RequiresDuplicateDetection") ?? false,
+            DuplicateDetectionHistoryTimeWindow: ParseOptionalTimeSpan(desc, "DuplicateDetectionHistoryTimeWindow"));
     }
 
     public static TopicProperties ReadTopicProperties(string xml)
@@ -85,7 +91,9 @@ public static class AtomXmlReader
             MaxSizeInMegabytes: ParseOptionalLong(desc, "MaxSizeInMegabytes") ?? 1024,
             EnableBatchedOperations: ParseOptionalBool(desc, "EnableBatchedOperations") ?? true,
             UserMetadata: ParseOptionalString(desc, "UserMetadata"),
-            AutoDeleteOnIdle: ParseOptionalTimeSpan(desc, "AutoDeleteOnIdle"));
+            AutoDeleteOnIdle: ParseOptionalTimeSpan(desc, "AutoDeleteOnIdle"),
+            RequiresDuplicateDetection: ParseOptionalBool(desc, "RequiresDuplicateDetection") ?? false,
+            DuplicateDetectionHistoryTimeWindow: ParseOptionalTimeSpan(desc, "DuplicateDetectionHistoryTimeWindow"));
     }
 
     public static SubscriptionProperties ReadSubscriptionProperties(string xml)
