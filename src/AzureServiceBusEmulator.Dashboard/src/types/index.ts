@@ -14,6 +14,7 @@ export interface QueueInfo {
   name: string
   messageCount: number
   deadLetterCount: number
+  totalMessageCount: number
   maxDeliveryCount: number
   forwardTo: string | null
 }

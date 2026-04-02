@@ -35,7 +35,7 @@ public static class DashboardApiEndpoints
 
             var queues = context.GetQueues().Select(q => new QueueInfo(
                 q.Name, q.MessageCount, q.DeadLetterQueue.MessageCount,
-                q.MaxDeliveryCount, q.ForwardTo)).ToList();
+                q.TotalMessageCount, q.MaxDeliveryCount, q.ForwardTo)).ToList();
 
             var topics = context.GetTopics().Select(t => new TopicInfo(
                 t.Name,

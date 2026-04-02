@@ -62,6 +62,12 @@ public sealed class QueueEntity
     /// </summary>
     public int MessageCount => _messageCount;
 
+    /// <summary>
+    /// Total messages that have passed through this queue (active + consumed + dead-lettered).
+    /// Used by the dashboard to show queues that have had any activity.
+    /// </summary>
+    public int TotalMessageCount => _allMessages.Count;
+
     public void SetEventBus(MessageEventBus bus, string namespaceName, string entityName)
     {
         _eventBus = bus;

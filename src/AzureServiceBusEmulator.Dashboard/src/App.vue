@@ -25,6 +25,7 @@ const selectedMessage = ref<MessageInfo | null>(null)
       :entity="selectedEntity"
       :entity-type="selectedEntityType"
       v-model:selectedMessage="selectedMessage"
+      @selectQueue="(q) => { selectedEntity = q; selectedEntityType = 'queue'; selectedMessage = null }"
     />
     <MessageDetail
       v-if="selectedMessage"

@@ -10,6 +10,7 @@ public record QueueInfo(
     string Name,
     int MessageCount,
     int DeadLetterCount,
+    int TotalMessageCount,
     int MaxDeliveryCount,
     string? ForwardTo);
 

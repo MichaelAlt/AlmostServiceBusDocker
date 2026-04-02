@@ -1,16 +1,15 @@
-import { ref, computed, reactive, watch } from 'vue'
+import { ref, computed, reactive } from 'vue'
 import type { EntityOverview, QueueInfo, TopicInfo, EntityGroup, NamespaceInfo } from '../types'
 import { api } from '../api/client'
-import { connectSse } from '../api/sse'
 
 export function useEntities(selectedNamespace: () => string) {
   const namespaces = ref<NamespaceInfo[]>([])
   const entities = ref<EntityOverview | null>(null)
   const loading = ref(false)
   const filter = ref('')
+  const showAll = ref(false)
   const collapsedGroups = reactive(new Set<string>())
 
-  // Namespace list polls (infrequent, lightweight)
   let nsInterval: ReturnType<typeof setInterval>
 
   async function refreshNamespaces() {
@@ -25,39 +24,22 @@ export function useEntities(selectedNamespace: () => string) {
     finally { loading.value = false }
   }
 
-  // SSE for real-time entity updates — when a message flows through
-  // the namespace, refresh the entity list to pick up new counts/entities
-  let entitySse: EventSource | null = null
-
-  function startEntitySse() {
-    entitySse?.close()
-    const ns = selectedNamespace()
-    if (!ns) return
-
-    entitySse = connectSse(ns, undefined, () => {
-      // Any event in this namespace = refresh entity counts
-      refreshEntities()
-    })
-  }
-
   function startPolling() {
     refreshNamespaces()
     refreshEntities()
-    startEntitySse()
-    nsInterval = setInterval(refreshNamespaces, 5000)
+    nsInterval = setInterval(() => {
+      refreshNamespaces()
+      refreshEntities()
+    }, 5000)
   }
 
   function stopPolling() {
     clearInterval(nsInterval)
-    entitySse?.close()
-    entitySse = null
   }
 
-  // When namespace changes, reload entities and reconnect SSE
   function onNamespaceChange() {
     entities.value = null
     refreshEntities()
-    startEntitySse()
   }
 
   function toggleGroup(prefix: string) {
@@ -72,27 +54,48 @@ export function useEntities(selectedNamespace: () => string) {
     return collapsedGroups.has(prefix)
   }
 
+  function hasActivity(q: QueueInfo): boolean {
+    return q.totalMessageCount > 0 || q.deadLetterCount > 0
+  }
+
+  function topicHasMessages(t: TopicInfo): boolean {
+    return t.subscriptions.some(s => s.messageCount > 0)
+  }
+
+  const filteredQueues = computed<QueueInfo[]>(() => {
+    if (!entities.value) return []
+    let queues = entities.value.queues
+    const f = filter.value.toLowerCase()
+    if (f) queues = queues.filter(q => q.name.toLowerCase().includes(f))
+    if (!showAll.value) queues = queues.filter(hasActivity)
+    return queues
+  })
+
   const topicGroups = computed<EntityGroup[]>(() => {
     if (!entities.value) return []
+    let topics = entities.value.topics
+    if (!showAll.value) topics = topics.filter(topicHasMessages)
+
     const groups = new Map<string, TopicInfo[]>()
-    for (const topic of entities.value.topics) {
+    for (const topic of topics) {
       const slashIdx = topic.name.lastIndexOf('/')
       const prefix = slashIdx > 0 ? topic.name.substring(0, slashIdx) : ''
       if (!groups.has(prefix)) groups.set(prefix, [])
       groups.get(prefix)!.push(topic)
     }
-    return Array.from(groups.entries()).map(([prefix, topics]) => ({
+    return Array.from(groups.entries()).map(([prefix, t]) => ({
       prefix: prefix || '(ungrouped)',
-      topics,
+      topics: t,
       collapsed: collapsedGroups.has(prefix || '(ungrouped)'),
     }))
   })
 
-  const filteredQueues = computed<QueueInfo[]>(() => {
-    if (!entities.value) return []
-    const f = filter.value.toLowerCase()
-    return f ? entities.value.queues.filter(q => q.name.toLowerCase().includes(f)) : entities.value.queues
-  })
+  const totalQueues = computed(() => entities.value?.queues.length ?? 0)
+  const totalTopics = computed(() => entities.value?.topics.length ?? 0)
 
-  return { namespaces, entities, loading, filter, topicGroups, filteredQueues, toggleGroup, isCollapsed, startPolling, stopPolling, onNamespaceChange, refreshEntities }
+  return {
+    namespaces, entities, loading, filter, showAll, topicGroups, filteredQueues,
+    totalQueues, totalTopics,
+    toggleGroup, isCollapsed, startPolling, stopPolling, onNamespaceChange, refreshEntities,
+  }
 }
