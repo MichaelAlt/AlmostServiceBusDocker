@@ -52,6 +52,13 @@ public sealed class BrokeredMessage
     public string? LockToken { get; set; }
 
     /// <summary>
+    /// UTC time at which the current lock on this message expires.
+    /// After this time, settlement operations (Complete, Abandon, DeadLetter) should fail
+    /// with a lock-lost error.
+    /// </summary>
+    public DateTimeOffset LockedUntil { get; set; }
+
+    /// <summary>
     /// Creates an independent copy of this message.
     /// DeliveryCount and SequenceNumber are reset to 0.
     /// ApplicationProperties are deep-copied.

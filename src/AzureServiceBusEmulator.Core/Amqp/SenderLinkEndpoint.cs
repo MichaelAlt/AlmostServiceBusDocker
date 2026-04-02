@@ -28,11 +28,15 @@ public class SenderLinkEndpoint : LinkEndpoint
         try
         {
             var brokeredMessage = ConvertToBrokeredMessage(messageContext.Message);
+            Console.WriteLine($"[RECV] {brokeredMessage.MessageId} → '{_address}'");
             RouteMessage(_address, brokeredMessage);
             messageContext.Complete();
+            Console.WriteLine($"[RECV] {brokeredMessage.MessageId} completed");
         }
-        catch
+        catch (Exception ex)
         {
+            Console.WriteLine($"[RECV] ERROR on '{_address}': {ex.Message}");
+
             messageContext.Complete(new global::Amqp.Framing.Error(new Symbol("amqp:internal-error"))
             {
                 Description = "Failed to process message"

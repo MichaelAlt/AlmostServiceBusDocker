@@ -195,7 +195,9 @@ public class ReceiverLinkEndpointTests
         Assert.Equal("dest", amqp.Properties.To);
         Assert.Equal("sess-1", amqp.Properties.GroupId);
         Assert.Equal("reply-sess-1", amqp.Properties.ReplyToGroupId);
-        Assert.Equal(3u, amqp.Header.DeliveryCount);
+        // AMQP Header.DeliveryCount is 0-based (prior unsuccessful deliveries).
+        // The broker's DeliveryCount=3 maps to AMQP DeliveryCount=2 (3-1).
+        Assert.Equal(2u, amqp.Header.DeliveryCount);
         Assert.Equal("value", amqp.ApplicationProperties["custom"]);
 
         // Check message annotations

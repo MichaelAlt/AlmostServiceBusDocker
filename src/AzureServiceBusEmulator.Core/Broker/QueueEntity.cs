@@ -110,6 +110,7 @@ public sealed class QueueEntity
         var message = await _channel.Reader.ReadAsync(cancellationToken).ConfigureAwait(false);
         Interlocked.Decrement(ref _messageCount);
         message.DeliveryCount++;
+        message.LockedUntil = DateTimeOffset.UtcNow.Add(LockDuration);
         TrackPending(message);
         return message;
     }
@@ -123,6 +124,7 @@ public sealed class QueueEntity
         {
             Interlocked.Decrement(ref _messageCount);
             message.DeliveryCount++;
+            message.LockedUntil = DateTimeOffset.UtcNow.Add(LockDuration);
             TrackPending(message);
             return message;
         }
@@ -141,20 +143,29 @@ public sealed class QueueEntity
 
     /// <summary>
     /// Completes a message, removing it from the pending dictionary.
+    /// Throws <see cref="MessageLockLostException"/> if the lock has expired.
     /// </summary>
     public void Complete(string lockToken)
     {
-        _pending.TryRemove(lockToken, out var message);
+        if (!_pending.TryRemove(lockToken, out var message))
+            return;
+
+        // Enforce lock expiry — if the lock has expired, re-enqueue the message
+        // and throw so the AMQP layer can reject the disposition.
+        if (message.LockedUntil != default && DateTimeOffset.UtcNow > message.LockedUntil)
+        {
+            Enqueue(message);
+            throw new MessageLockLostException(lockToken);
+        }
+
         // Mark as consumed but keep in _allMessages for dashboard visibility
         if (_allMessages.TryGetValue(lockToken, out var tracked))
             tracked.State = MessageState.Consumed;
-        if (message is not null)
-        {
-            _eventBus?.Publish(new MessageEvent(
-                MessageEventType.Completed, _namespaceName ?? "", _entityName ?? "",
-                message.MessageId, message.SequenceNumber, message.ContentType,
-                null, null, DateTimeOffset.UtcNow));
-        }
+
+        _eventBus?.Publish(new MessageEvent(
+            MessageEventType.Completed, _namespaceName ?? "", _entityName ?? "",
+            message.MessageId, message.SequenceNumber, message.ContentType,
+            null, null, DateTimeOffset.UtcNow));
     }
 
     /// <summary>
@@ -247,5 +258,19 @@ public sealed class QueueEntity
             return scalars.Count > 0 ? scalars : null;
         }
         catch { return null; }
+    }
+}
+
+/// <summary>
+/// Thrown when a settlement operation is attempted on a message whose lock has expired.
+/// </summary>
+public sealed class MessageLockLostException : Exception
+{
+    public string LockToken { get; }
+
+    public MessageLockLostException(string lockToken)
+        : base($"The lock on message with lock token '{lockToken}' has expired.")
+    {
+        LockToken = lockToken;
     }
 }

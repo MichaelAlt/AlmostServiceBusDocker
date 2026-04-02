@@ -97,9 +97,13 @@ public sealed class NamespaceContext
 
     /// <summary>
     /// Resolves an AMQP address to a <see cref="QueueEntity"/>.
-    /// Tries the address as a direct queue name first; if that fails it
-    /// parses the <c>topicName/Subscriptions/subName</c> pattern and
-    /// returns the subscription's internal queue.
+    /// Supports:
+    /// <list type="bullet">
+    ///   <item>Direct queue name: <c>myQueue</c></item>
+    ///   <item>Dead letter queue: <c>myQueue/$DeadLetterQueue</c></item>
+    ///   <item>Subscription path: <c>topicName/Subscriptions/subName</c></item>
+    ///   <item>Subscription DLQ: <c>topicName/Subscriptions/subName/$DeadLetterQueue</c></item>
+    /// </list>
     /// Returns <see langword="null"/> when no match is found.
     /// </summary>
     public QueueEntity? ResolveQueue(string address)
@@ -107,12 +111,36 @@ public sealed class NamespaceContext
         if (_queues.TryGetValue(address, out var queue))
             return queue;
 
+        // Check for $DeadLetterQueue suffix on a direct queue
+        const string dlqSuffix = "/$DeadLetterQueue";
+        if (address.EndsWith(dlqSuffix, StringComparison.OrdinalIgnoreCase))
+        {
+            var parentName = address[..^dlqSuffix.Length];
+
+            // Try as a direct queue DLQ
+            if (_queues.TryGetValue(parentName, out var parentQueue))
+                return parentQueue.DeadLetterQueue;
+
+            // Try as a subscription DLQ: "topicName/Subscriptions/subName/$DeadLetterQueue"
+            var subParts = parentName.Split('/');
+            if (subParts.Length >= 3 &&
+                subParts[^2].Equals("Subscriptions", StringComparison.OrdinalIgnoreCase))
+            {
+                var topicName = string.Join('/', subParts[..^2]);
+                var subName = subParts[^1];
+                var sub = GetSubscription(topicName, subName);
+                return sub?.Queue.DeadLetterQueue;
+            }
+        }
+
         // Try subscription path: "topicName/Subscriptions/subName"
         var parts = address.Split('/');
-        if (parts.Length == 3 &&
-            parts[1].Equals("Subscriptions", StringComparison.OrdinalIgnoreCase))
+        if (parts.Length >= 3 &&
+            parts[^2].Equals("Subscriptions", StringComparison.OrdinalIgnoreCase))
         {
-            return GetSubscription(parts[0], parts[2])?.Queue;
+            var topicName = string.Join('/', parts[..^2]);
+            var subName = parts[^1];
+            return GetSubscription(topicName, subName)?.Queue;
         }
 
         return null;
