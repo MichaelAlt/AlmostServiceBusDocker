@@ -38,7 +38,13 @@ public record RuleProperties(
     FilterType FilterType,
     string? SqlExpression,
     string? CorrelationId,
-    string? ActionExpression);
+    string? ActionExpression,
+    string? Subject = null,
+    string? To = null,
+    string? ReplyTo = null,
+    string? SessionId = null,
+    string? ContentType = null,
+    Dictionary<string, object>? CorrelationFilterProperties = null);
 
 // ── Reader ───────────────────────────────────────────────────────────────────
 
@@ -113,11 +119,39 @@ public static class AtomXmlReader
 
         string? sqlExpression = null;
         string? correlationId = null;
+        string? subject = null;
+        string? to = null;
+        string? replyTo = null;
+        string? sessionId = null;
+        string? contentType = null;
+        Dictionary<string, object>? correlationFilterProperties = null;
 
         if (filterType == FilterType.SqlFilter)
+        {
             sqlExpression = ParseOptionalString(filterEl, "SqlExpression");
+        }
         else if (filterType == FilterType.CorrelationFilter)
+        {
             correlationId = ParseOptionalString(filterEl, "CorrelationId");
+            subject = ParseOptionalString(filterEl, "Label");
+            to = ParseOptionalString(filterEl, "To");
+            replyTo = ParseOptionalString(filterEl, "ReplyTo");
+            sessionId = ParseOptionalString(filterEl, "SessionId");
+            contentType = ParseOptionalString(filterEl, "ContentType");
+
+            var propsEl = filterEl.Element(Sb + "Properties");
+            if (propsEl is not null)
+            {
+                correlationFilterProperties = new Dictionary<string, object>();
+                foreach (var kvp in propsEl.Elements(Sb + "KeyValueOfstringanyType"))
+                {
+                    var key = kvp.Element(Sb + "Key")?.Value;
+                    var value = kvp.Element(Sb + "Value")?.Value;
+                    if (key is not null && value is not null)
+                        correlationFilterProperties[key] = value;
+                }
+            }
+        }
 
         var actionEl = desc.Element(Sb + "Action");
         string? actionExpression = null;
@@ -130,7 +164,8 @@ public static class AtomXmlReader
 
         var name = ParseString(desc, "Name");
 
-        return new RuleProperties(name, filterType, sqlExpression, correlationId, actionExpression);
+        return new RuleProperties(name, filterType, sqlExpression, correlationId, actionExpression,
+            subject, to, replyTo, sessionId, contentType, correlationFilterProperties);
     }
 
     // ── Internal helpers ─────────────────────────────────────────────────────

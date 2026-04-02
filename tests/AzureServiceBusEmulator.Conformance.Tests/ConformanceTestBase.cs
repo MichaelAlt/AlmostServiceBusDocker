@@ -882,4 +882,103 @@ public abstract class ConformanceTestBase : IAsyncLifetime
 
         await receiver.CompleteMessageAsync(delayed);
     }
+
+    // ══════════════════════════════════════════════════════════════════════════
+    // Test 17: Subscription SQL Filter
+    // ══════════════════════════════════════════════════════════════════════════
+
+    [Fact]
+    public async Task SubscriptionSqlFilter_OnlyMatchingMessagesDelivered()
+    {
+        ThrowIfSkipped();
+
+        var topic = await CreateTestTopicAsync();
+        var queue = await CreateTestQueueAsync();
+
+        // Create a subscription with a SQL filter that only matches color = 'blue'
+        var subOptions = new CreateSubscriptionOptions(topic, "filtered-sub")
+        {
+            ForwardTo = queue
+        };
+        await AdminClient.CreateSubscriptionAsync(subOptions);
+
+        // Remove the default $Default rule and add a SQL filter
+        await AdminClient.DeleteRuleAsync(topic, "filtered-sub", "$Default");
+        var ruleOptions = new CreateRuleOptions("color-filter")
+        {
+            Filter = new SqlRuleFilter("color = 'blue'")
+        };
+        await AdminClient.CreateRuleAsync(topic, "filtered-sub", ruleOptions);
+
+        await using var sender = Client.CreateSender(topic);
+
+        // Send a matching message
+        var blueMsg = new ServiceBusMessage("blue-msg") { MessageId = "blue-1" };
+        blueMsg.ApplicationProperties["color"] = "blue";
+        await sender.SendMessageAsync(blueMsg);
+
+        // Send a non-matching message
+        var redMsg = new ServiceBusMessage("red-msg") { MessageId = "red-1" };
+        redMsg.ApplicationProperties["color"] = "red";
+        await sender.SendMessageAsync(redMsg);
+
+        // Only the blue message should be received
+        await using var receiver = Client.CreateReceiver(queue);
+        var msg = await receiver.ReceiveMessageAsync(TimeSpan.FromSeconds(5));
+        Assert.NotNull(msg);
+        Assert.Equal("blue-msg", msg.Body.ToString());
+
+        await receiver.CompleteMessageAsync(msg);
+
+        // No more messages
+        var extra = await receiver.ReceiveMessageAsync(TimeSpan.FromSeconds(2));
+        Assert.Null(extra);
+    }
+
+    // ══════════════════════════════════════════════════════════════════════════
+    // Test 18: Subscription Correlation Filter
+    // ══════════════════════════════════════════════════════════════════════════
+
+    [Fact]
+    public async Task SubscriptionCorrelationFilter_OnlyMatchingMessagesDelivered()
+    {
+        ThrowIfSkipped();
+
+        var topic = await CreateTestTopicAsync();
+        var queue = await CreateTestQueueAsync();
+
+        var subOptions = new CreateSubscriptionOptions(topic, "corr-sub")
+        {
+            ForwardTo = queue
+        };
+        await AdminClient.CreateSubscriptionAsync(subOptions);
+
+        // Remove the default rule and add a correlation filter on Subject
+        await AdminClient.DeleteRuleAsync(topic, "corr-sub", "$Default");
+        var ruleOptions = new CreateRuleOptions("subject-filter")
+        {
+            Filter = new CorrelationRuleFilter { Subject = "important" }
+        };
+        await AdminClient.CreateRuleAsync(topic, "corr-sub", ruleOptions);
+
+        await using var sender = Client.CreateSender(topic);
+
+        // Send a matching message
+        var matchMsg = new ServiceBusMessage("match") { Subject = "important" };
+        await sender.SendMessageAsync(matchMsg);
+
+        // Send a non-matching message
+        var noMatchMsg = new ServiceBusMessage("no-match") { Subject = "trivial" };
+        await sender.SendMessageAsync(noMatchMsg);
+
+        // Only the matching message should be received
+        await using var receiver = Client.CreateReceiver(queue);
+        var msg = await receiver.ReceiveMessageAsync(TimeSpan.FromSeconds(5));
+        Assert.NotNull(msg);
+        Assert.Equal("match", msg.Body.ToString());
+        await receiver.CompleteMessageAsync(msg);
+
+        var extra = await receiver.ReceiveMessageAsync(TimeSpan.FromSeconds(2));
+        Assert.Null(extra);
+    }
 }

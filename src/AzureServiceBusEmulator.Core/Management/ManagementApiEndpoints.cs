@@ -59,6 +59,12 @@ public static class ManagementApiEndpoints
                     FilterType = props.FilterType,
                     SqlExpression = props.SqlExpression,
                     CorrelationId = props.CorrelationId,
+                    Subject = props.Subject,
+                    To = props.To,
+                    ReplyTo = props.ReplyTo,
+                    SessionId = props.SessionId,
+                    ContentType = props.ContentType,
+                    CorrelationFilterProperties = props.CorrelationFilterProperties,
                     ActionExpression = props.ActionExpression
                 };
                 sub.AddOrUpdateRule(rule);

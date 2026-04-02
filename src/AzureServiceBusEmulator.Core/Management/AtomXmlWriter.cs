@@ -114,7 +114,7 @@ public static class AtomXmlWriter
         var filterType = rule.FilterType switch
         {
             FilterType.TrueFilter => "TrueFilter",
-            FilterType.FalseFilter => "TrueFilter", // FalseFilter is represented as TrueFilter in the SDK protocol but we label it same
+            FilterType.FalseFilter => "FalseFilter",
             FilterType.SqlFilter => "SqlFilter",
             FilterType.CorrelationFilter => "CorrelationFilter",
             _ => "TrueFilter"
@@ -135,6 +135,28 @@ public static class AtomXmlWriter
         {
             if (rule.CorrelationId is not null)
                 filterElement.Add(new XElement(Sb + "CorrelationId", rule.CorrelationId));
+            if (rule.Subject is not null)
+                filterElement.Add(new XElement(Sb + "Label", rule.Subject));
+            if (rule.To is not null)
+                filterElement.Add(new XElement(Sb + "To", rule.To));
+            if (rule.ReplyTo is not null)
+                filterElement.Add(new XElement(Sb + "ReplyTo", rule.ReplyTo));
+            if (rule.SessionId is not null)
+                filterElement.Add(new XElement(Sb + "SessionId", rule.SessionId));
+            if (rule.ContentType is not null)
+                filterElement.Add(new XElement(Sb + "ContentType", rule.ContentType));
+
+            if (rule.CorrelationFilterProperties is { Count: > 0 })
+            {
+                var propsEl = new XElement(Sb + "Properties");
+                foreach (var (key, value) in rule.CorrelationFilterProperties)
+                {
+                    propsEl.Add(new XElement(Sb + "KeyValueOfstringanyType",
+                        new XElement(Sb + "Key", key),
+                        new XElement(Sb + "Value", value)));
+                }
+                filterElement.Add(propsEl);
+            }
         }
 
         var actionType = rule.ActionExpression is null ? "EmptyRuleAction" : "SqlRuleAction";
