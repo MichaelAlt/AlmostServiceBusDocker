@@ -6,11 +6,11 @@ using Amqp.Types;
 namespace AzureServiceBusEmulator.Core.Amqp;
 
 /// <summary>
-/// AMQPNetLite IHandler that rewrites outgoing delivery tags from 4-byte
-/// integers to 16-byte GUIDs before they hit the wire.
-///
-/// The Azure SDK reads the delivery tag as LockTokenGuid — if it's not
-/// 16 bytes, the SDK treats the message as "peeked" and rejects settlement.
+/// AMQPNetLite IHandler that:
+/// 1. Rewrites outgoing delivery tags from 4-byte integers to 16-byte GUIDs
+///    (the Azure SDK reads the delivery tag as LockTokenGuid — if it's not
+///    16 bytes, the SDK treats the message as "peeked" and rejects settlement).
+/// 2. Handles connection close events to clean up CBS connection tracking.
 ///
 /// Uses reflection because AMQPNetLite's Delivery class is internal.
 /// </summary>
@@ -26,10 +26,18 @@ public class GuidDeliveryTagHandler : IHandler
         MessageProperty = deliveryType?.GetProperty("Message");
     }
 
-    public bool CanHandle(EventId id) => id == EventId.SendDelivery;
+    public bool CanHandle(EventId id) =>
+        id == EventId.SendDelivery ||
+        id == EventId.ConnectionRemoteClose;
 
     public void Handle(Event protocolEvent)
     {
+        if (protocolEvent.Id == EventId.ConnectionRemoteClose)
+        {
+            HandleConnectionRemoteClose(protocolEvent);
+            return;
+        }
+
         if (protocolEvent.Context is null || TagProperty is null) return;
 
         try
@@ -46,5 +54,18 @@ public class GuidDeliveryTagHandler : IHandler
             }
         }
         catch { /* best effort — if this fails, delivery tag stays as 4-byte int */ }
+    }
+
+    private static void HandleConnectionRemoteClose(Event protocolEvent)
+    {
+        try
+        {
+            // Clean up CBS connection tracking when a connection is closed remotely.
+            if (protocolEvent.Context is Connection connection)
+            {
+                CbsRequestProcessor.RemoveConnection(connection);
+            }
+        }
+        catch { /* best effort cleanup */ }
     }
 }

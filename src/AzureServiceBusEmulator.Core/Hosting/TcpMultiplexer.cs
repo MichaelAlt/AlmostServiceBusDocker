@@ -172,8 +172,12 @@ public class TcpMultiplexer
         Stream clientStream, NetworkStream backendStream,
         TcpClient client, TcpClient backend, CancellationToken ct)
     {
-        var clientToBackend = clientStream.CopyToAsync(backendStream, ct);
-        var backendToClient = backendStream.CopyToAsync(clientStream, ct);
+        // Wrap each direction so that when one side's copy completes (EOF),
+        // we immediately signal half-close on the other side's socket.
+        // This ensures ContainerHost sees EOF promptly and can respond
+        // with its AMQP Close frame instead of waiting for a timeout.
+        var clientToBackend = CopyAndSignalAsync(clientStream, backendStream, backend, ct);
+        var backendToClient = CopyAndSignalAsync(backendStream, clientStream, client, ct);
 
         await Task.WhenAny(clientToBackend, backendToClient);
 
@@ -187,6 +191,27 @@ public class TcpMultiplexer
 
         try { client.Client.Shutdown(SocketShutdown.Both); } catch { }
         try { backend.Client.Shutdown(SocketShutdown.Both); } catch { }
+    }
+
+    /// <summary>
+    /// Copies data from source to destination, then signals half-close on the
+    /// destination's underlying socket. This propagates EOF through the proxy
+    /// so the peer sees the connection close immediately rather than waiting
+    /// for an idle timeout.
+    /// </summary>
+    private static async Task CopyAndSignalAsync(
+        Stream source, Stream destination, TcpClient destinationClient, CancellationToken ct)
+    {
+        try
+        {
+            await source.CopyToAsync(destination, ct);
+            // Source reached EOF — flush any buffered TLS data in the destination
+            await destination.FlushAsync(ct);
+        }
+        catch { }
+
+        // Signal half-close: no more data will be sent on this side
+        try { destinationClient.Client.Shutdown(SocketShutdown.Send); } catch { }
     }
 
     /// <summary>
