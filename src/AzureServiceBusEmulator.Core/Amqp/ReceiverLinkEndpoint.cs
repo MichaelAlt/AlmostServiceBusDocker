@@ -259,6 +259,8 @@ public class ReceiverLinkEndpoint : LinkEndpoint
     /// AMQPNetLite updates this when the client sends Flow frames
     /// (including credit replenishment after completing messages).
     /// </summary>
+    internal static uint GetLinkCreditStatic(ListenerLink link) => GetLinkCredit(link);
+
     private static uint GetLinkCredit(ListenerLink link)
     {
         try { return (uint)(CreditField?.GetValue(link) ?? 0u); }

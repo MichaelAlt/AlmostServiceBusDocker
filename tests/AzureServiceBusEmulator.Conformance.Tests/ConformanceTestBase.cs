@@ -1082,4 +1082,79 @@ public abstract class ConformanceTestBase : IAsyncLifetime
         var extra = await receiver.ReceiveMessageAsync(TimeSpan.FromSeconds(2));
         Assert.Null(extra);
     }
+
+    // ══════════════════════════════════════════════════════════════════════════
+    // Test: Session send and receive — FIFO order
+    // ══════════════════════════════════════════════════════════════════════════
+
+    [Fact]
+    public async Task Session_SendAndReceive_FifoOrder()
+    {
+        ThrowIfSkipped();
+
+        var queue = await CreateTestQueueAsync(new CreateQueueOptions($"ct-{_uniqueId}-sess1")
+        {
+            RequiresSession = true,
+            LockDuration = TimeSpan.FromMinutes(1)
+        });
+
+        await using var sender = Client.CreateSender(queue);
+        for (int i = 0; i < 3; i++)
+        {
+            await sender.SendMessageAsync(new ServiceBusMessage($"msg-{i}")
+            {
+                SessionId = "session-1",
+                MessageId = $"sess-msg-{i}"
+            });
+        }
+
+        await using var receiver = await Client.AcceptSessionAsync(queue, "session-1");
+
+        var messages = new List<string>();
+        for (int i = 0; i < 3; i++)
+        {
+            var msg = await receiver.ReceiveMessageAsync(TimeSpan.FromSeconds(5));
+            Assert.NotNull(msg);
+            messages.Add(msg.Body.ToString());
+            await receiver.CompleteMessageAsync(msg);
+        }
+
+        Assert.Equal(["msg-0", "msg-1", "msg-2"], messages);
+    }
+
+    // ══════════════════════════════════════════════════════════════════════════
+    // Test: Multiple sessions — isolated delivery
+    // ══════════════════════════════════════════════════════════════════════════
+
+    [Fact]
+    public async Task Session_MultipleSessions_IsolatedDelivery()
+    {
+        ThrowIfSkipped();
+
+        var queue = await CreateTestQueueAsync(new CreateQueueOptions($"ct-{_uniqueId}-sess2")
+        {
+            RequiresSession = true,
+            LockDuration = TimeSpan.FromMinutes(1)
+        });
+
+        await using var sender = Client.CreateSender(queue);
+        await sender.SendMessageAsync(new ServiceBusMessage("alpha") { SessionId = "A" });
+        await sender.SendMessageAsync(new ServiceBusMessage("beta") { SessionId = "B" });
+        await sender.SendMessageAsync(new ServiceBusMessage("gamma") { SessionId = "A" });
+
+        await using var receiverA = await Client.AcceptSessionAsync(queue, "A");
+        await using var receiverB = await Client.AcceptSessionAsync(queue, "B");
+
+        var msgA1 = await receiverA.ReceiveMessageAsync(TimeSpan.FromSeconds(5));
+        var msgA2 = await receiverA.ReceiveMessageAsync(TimeSpan.FromSeconds(5));
+        var msgB1 = await receiverB.ReceiveMessageAsync(TimeSpan.FromSeconds(5));
+
+        Assert.Equal("alpha", msgA1!.Body.ToString());
+        Assert.Equal("gamma", msgA2!.Body.ToString());
+        Assert.Equal("beta", msgB1!.Body.ToString());
+
+        await receiverA.CompleteMessageAsync(msgA1);
+        await receiverA.CompleteMessageAsync(msgA2);
+        await receiverB.CompleteMessageAsync(msgB1);
+    }
 }
