@@ -26,7 +26,7 @@ public class ServiceBusEmulatorFixture : IAsyncDisposable
     public string Namespace => _namespace;
 
     public string ConnectionString =>
-        $"Endpoint=sb://{_namespace}.localhost:{PublicPort};SharedAccessKeyName=RootManageSharedAccessKey;SharedAccessKey=emulator";
+        $"Endpoint=sb://localhost:{PublicPort};SharedAccessKeyName={_namespace};SharedAccessKey=emulator";
 
     public string AmqpConnectionString =>
         $"amqp://localhost:{AmqpPort}";

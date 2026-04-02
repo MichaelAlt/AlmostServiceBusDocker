@@ -18,8 +18,11 @@ export const api = {
 
   getEntities: (ns: string) => get<EntityOverview>(`/namespaces/${ns}/entities`),
 
-  getMessages: (ns: string, queueName: string) =>
+  getQueueMessages: (ns: string, queueName: string) =>
     get<MessageInfo[]>(`/namespaces/${ns}/queues/${queueName}/messages`),
+
+  getTopicMessages: (ns: string, topicName: string) =>
+    get<MessageInfo[]>(`/namespaces/${ns}/topics/${topicName}/messages`),
 
   getDeadLetterMessages: (ns: string, queueName: string) =>
     get<MessageInfo[]>(`/namespaces/${ns}/queues/${queueName}/deadletter`),

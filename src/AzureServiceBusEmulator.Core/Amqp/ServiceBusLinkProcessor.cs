@@ -100,41 +100,38 @@ public class ServiceBusLinkProcessor : ILinkProcessor
     }
 
     /// <summary>
-    /// Resolves the namespace from the AMQP connection's hostname, matching
-    /// the REST API's namespace resolution from the Host header.
-    /// e.g. "app1.localhost" → namespace "app1", "localhost" → namespace "default"
+    /// Resolves the namespace from the AMQP connection.
+    /// First checks for a namespace stored by CBS authentication (from SharedAccessKeyName).
+    /// Falls back to the connection's OPEN frame hostname, then "default".
     /// </summary>
     private NamespaceContext ResolveNamespace(AttachContext attachContext)
     {
-        // Walk up: Link → Session → Connection to get the remote OPEN frame's HostName
         var connection = attachContext.Link.Session.Connection;
 
-        // The Connection.Open property contains the remote peer's OPEN performative
-        // which has the HostName field set by the client.
-        string namespaceName = "default";
+        // 1. Check if CBS auth stored a namespace from SharedAccessKeyName
+        var keyName = CbsRequestProcessor.GetNamespaceForConnection(connection);
+        if (keyName is not null)
+        {
+            return _registry.GetOrCreate(keyName);
+        }
 
-        // Try to get hostname from the connection's OPEN frame via reflection
-        // AMQPNetLite doesn't expose this directly on Connection, but the
-        // ListenerConnection's properties or the OPEN frame has it.
+        // 2. Fall back to hostname from OPEN frame
         try
         {
-            // Connection stores the remote open frame — try to access it
             var openProp = connection.GetType().GetProperty("Open",
                 System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
             if (openProp?.GetValue(connection) is Open open && !string.IsNullOrEmpty(open.HostName))
             {
                 var host = open.HostName;
-                namespaceName = host.Split('.')[0];
-                if (namespaceName.Equals("localhost", StringComparison.OrdinalIgnoreCase))
-                    namespaceName = "default";
+                var namespaceName = host.Split('.')[0];
+                if (!namespaceName.Equals("localhost", StringComparison.OrdinalIgnoreCase))
+                    return _registry.GetOrCreate(namespaceName);
             }
         }
-        catch
-        {
-            // Fallback to default
-        }
+        catch { }
 
-        return _registry.GetOrCreate(namespaceName);
+        // 3. Default
+        return _registry.GetOrCreate("default");
     }
 
     private static void EnsureEntityExists(NamespaceContext context, string address)

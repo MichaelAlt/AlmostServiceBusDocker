@@ -23,6 +23,11 @@ public static class DashboardSseEndpoint
             httpContext.Response.Headers.CacheControl = "no-cache";
             httpContext.Response.Headers.Connection = "keep-alive";
 
+            // Send an initial comment to flush headers — EventSource fires
+            // onopen only after receiving the first bytes of the response.
+            await httpContext.Response.WriteAsync(": connected\n\n");
+            await httpContext.Response.Body.FlushAsync();
+
             var reader = eventBus.Subscribe();
             var ct = httpContext.RequestAborted;
 

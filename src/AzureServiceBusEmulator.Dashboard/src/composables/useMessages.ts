@@ -3,16 +3,19 @@ import type { MessageInfo, MessageEvent } from '../types'
 import { api } from '../api/client'
 import { connectSse } from '../api/sse'
 
-export function useMessages(ns: () => string, entity: () => string | null) {
+export function useMessages(ns: () => string, entity: () => string | null, entityType: () => 'queue' | 'topic' | null) {
   const messages = ref<MessageInfo[]>([])
   const connected = ref(false)
   let source: EventSource | null = null
 
   async function refresh() {
     const e = entity()
+    const t = entityType()
     if (!e) { messages.value = []; return }
     try {
-      messages.value = await api.getMessages(ns(), e)
+      messages.value = t === 'topic'
+        ? await api.getTopicMessages(ns(), e)
+        : await api.getQueueMessages(ns(), e)
     } catch { /* ignore */ }
   }
 

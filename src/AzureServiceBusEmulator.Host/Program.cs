@@ -8,78 +8,102 @@ using System.Security.Cryptography.X509Certificates;
 using System.Net.Sockets;
 using Vite.AspNetCore;
 
-var builder = WebApplication.CreateBuilder(args);
+// ── Management API server (internal, behind TLS multiplexer) ──
 
-builder.Logging.SetMinimumLevel(LogLevel.Warning);
-builder.Services.AddViteServices();
+var mgmtBuilder = WebApplication.CreateBuilder(args);
+mgmtBuilder.Logging.SetMinimumLevel(LogLevel.Warning);
 
-var publicPort = builder.Configuration.GetValue("Port", 5672);
-var amqpsPort = 5671; // Default AMQPS port — ServiceBusClient connects here
+var publicPort = mgmtBuilder.Configuration.GetValue("Port", 5672);
+var dashboardPort = mgmtBuilder.Configuration.GetValue("DashboardPort", 15672);
+var amqpsPort = 5671;
 var internalHttpPort = GetFreePort();
 var internalAmqpPort = GetFreePort();
 
 var eventBus = new MessageEventBus();
 var registry = new NamespaceRegistry(eventBus);
 
-// Kestrel serves plain HTTP — TLS is terminated by the multiplexer
-builder.WebHost.ConfigureKestrel(k =>
+mgmtBuilder.WebHost.ConfigureKestrel(k =>
 {
     k.ListenLocalhost(internalHttpPort);
 });
 
-var app = builder.Build();
+var mgmtApp = mgmtBuilder.Build();
+mgmtApp.MapServiceBusManagementApi(registry);
+await mgmtApp.StartAsync();
 
-app.UseCors(policy => policy
+// ── Dashboard server (separate port, no route conflicts) ──
+
+var dashBuilder = WebApplication.CreateBuilder(args);
+dashBuilder.Logging.SetMinimumLevel(LogLevel.Warning);
+dashBuilder.Services.AddViteServices();
+dashBuilder.Services.AddCors();
+
+dashBuilder.WebHost.ConfigureKestrel(k =>
+{
+    k.ListenAnyIP(dashboardPort);
+});
+
+var dashApp = dashBuilder.Build();
+
+dashApp.UseCors(policy => policy
     .AllowAnyOrigin()
     .AllowAnyMethod()
     .AllowAnyHeader());
 
-if (app.Environment.IsDevelopment())
+if (dashApp.Environment.IsDevelopment())
 {
-    app.UseViteDevelopmentServer();
+    dashApp.UseViteDevelopmentServer();
 }
 
-app.UseStaticFiles();
+dashApp.UseStaticFiles();
+dashApp.MapDashboardApi(registry);
+dashApp.MapDashboardSse(eventBus);
+dashApp.MapFallbackToFile("index.html");
 
-app.MapServiceBusManagementApi(registry);
-app.MapDashboardApi(registry);
-app.MapDashboardSse(eventBus);
+await dashApp.StartAsync();
 
-app.MapFallbackToFile("index.html");
+// ── AMQP server ──
 
 var amqpServer = new AmqpServer(new AmqpServerOptions { Port = internalAmqpPort }, registry);
 amqpServer.Start();
 
-// Load dev cert for TLS termination in the multiplexer
-var cert = LoadDevCert();
+// ── TLS multiplexers ──
 
+var cert = LoadDevCert();
 var multiplexerCts = new CancellationTokenSource();
 
-// Primary multiplexer on the public port (admin client HTTPS + plain AMQP)
 var multiplexer = new TcpMultiplexer(publicPort, internalAmqpPort, internalHttpPort, cert);
 _ = multiplexer.StartAsync(multiplexerCts.Token);
 
-// Secondary multiplexer on the default AMQPS port (5671)
-// The Azure ServiceBusClient strips the port from the connection string and
-// connects to the default AMQPS port. We need to listen there too.
 if (amqpsPort != publicPort)
 {
     var amqpsMultiplexer = new TcpMultiplexer(amqpsPort, internalAmqpPort, internalHttpPort, cert);
     _ = amqpsMultiplexer.StartAsync(multiplexerCts.Token);
 }
 
-app.Lifetime.ApplicationStopping.Register(() =>
-{
-    multiplexerCts.Cancel();
-    amqpServer.Stop();
-});
+// ── Shutdown ──
 
 Console.WriteLine($"Azure Service Bus Emulator started");
-Console.WriteLine($"  Listening: localhost:{publicPort} (HTTPS/AMQP), localhost:{amqpsPort} (AMQPS)");
+Console.WriteLine($"  Service Bus: localhost:{publicPort} (HTTPS/AMQP), localhost:{amqpsPort} (AMQPS)");
+Console.WriteLine($"  Dashboard:   http://localhost:{dashboardPort}");
 Console.WriteLine();
 Console.WriteLine($"  Connection String: Endpoint=sb://localhost:{publicPort};SharedAccessKeyName=RootManageSharedAccessKey;SharedAccessKey=emulator");
 
-app.Run();
+// Block until Ctrl+C, then shut everything down quickly
+var shutdownCts = new CancellationTokenSource();
+Console.CancelKeyPress += (_, e) => { e.Cancel = true; shutdownCts.Cancel(); };
+
+try { await Task.Delay(Timeout.Infinite, shutdownCts.Token); } catch (OperationCanceledException) { }
+
+Console.WriteLine("Shutting down...");
+multiplexerCts.Cancel();
+amqpServer.Stop();
+
+using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(2));
+await Task.WhenAll(
+    mgmtApp.StopAsync(timeout.Token),
+    dashApp.StopAsync(timeout.Token)
+);
 
 static X509Certificate2 LoadDevCert()
 {

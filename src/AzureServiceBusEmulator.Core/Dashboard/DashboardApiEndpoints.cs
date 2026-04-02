@@ -73,6 +73,33 @@ public static class DashboardApiEndpoints
             return Results.NotFound();
         });
 
+        // Catch-all GET for topic subscription messages.
+        api.MapGet("/namespaces/{ns}/topics/{**path}", (string ns, string path) =>
+        {
+            var context = registry.Get(ns);
+            if (context is null) return Results.NotFound();
+
+            // path = "TopicName/subscriptions/SubName/messages"
+            // or just "TopicName/messages" (peek all subscriptions)
+            if (path.EndsWith("/messages", StringComparison.OrdinalIgnoreCase))
+            {
+                var topicName = path[..^"/messages".Length];
+                var topic = context.GetTopic(topicName);
+                if (topic is null) return Results.NotFound();
+
+                // Aggregate messages from all subscriptions' queues
+                var messages = topic.GetSubscriptions()
+                    .SelectMany(s => s.Queue.PeekMessages(50))
+                    .OrderByDescending(m => m.SequenceNumber)
+                    .Take(50)
+                    .Select(ToMessageInfo)
+                    .ToList();
+                return Results.Ok(messages);
+            }
+
+            return Results.NotFound();
+        });
+
         // Catch-all DELETE for queue purge operations.
         api.MapDelete("/namespaces/{ns}/queues/{**path}", (string ns, string path) =>
         {

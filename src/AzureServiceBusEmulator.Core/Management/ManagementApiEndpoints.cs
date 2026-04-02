@@ -146,6 +146,8 @@ public static class ManagementApiEndpoints
         app.MapGet("/{**path}", (HttpRequest request) =>
         {
             var path = GetRoutePath(request);
+            if (string.IsNullOrEmpty(path))
+                return ManagementApiErrors.EntityNotFound("");
             var ns = ResolveNamespace(request, registry);
 
             if (TryParseRulePath(path, out var topicName, out var subName, out var ruleName))
@@ -331,10 +333,29 @@ public static class ManagementApiEndpoints
 
     private static NamespaceContext ResolveNamespace(HttpRequest request, NamespaceRegistry registry)
     {
+        // Resolve namespace from SharedAccessKeyName in the Authorization header.
+        // Connection string: Endpoint=sb://localhost:5672;SharedAccessKeyName={namespace};SharedAccessKey=emulator
+        // The SDK sends: Authorization: SharedAccessSignature sr=...&skn={namespace}&...
+        var auth = request.Headers.Authorization.FirstOrDefault();
+        if (auth is not null)
+        {
+            var sknIdx = auth.IndexOf("skn=", StringComparison.OrdinalIgnoreCase);
+            if (sknIdx >= 0)
+            {
+                var start = sknIdx + 4;
+                var end = auth.IndexOf('&', start);
+                var keyName = end >= 0 ? auth[start..end] : auth[start..];
+                if (!string.IsNullOrEmpty(keyName)
+                    && !keyName.Equals("RootManageSharedAccessKey", StringComparison.OrdinalIgnoreCase))
+                {
+                    return registry.GetOrCreate(keyName);
+                }
+            }
+        }
+
+        // Fallback: hostname-based resolution (subdomain or localhost → default)
         var host = request.Host.Host ?? string.Empty;
         var namespaceName = host.Split('.')[0];
-        // When connecting directly to localhost (no subdomain), use the default
-        // namespace to match the AMQP server's namespace resolution.
         if (namespaceName.Equals("localhost", StringComparison.OrdinalIgnoreCase))
             namespaceName = "default";
         return registry.GetOrCreate(namespaceName);

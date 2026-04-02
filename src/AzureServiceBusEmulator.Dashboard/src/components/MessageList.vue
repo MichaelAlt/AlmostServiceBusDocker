@@ -13,7 +13,7 @@ const props = defineProps<{
 const selectedMessage = defineModel<MessageInfo | null>('selectedMessage')
 
 const { messages, connected, refresh, startSse, stopSse } =
-  useMessages(() => props.namespace, () => props.entity)
+  useMessages(() => props.namespace, () => props.entity, () => props.entityType)
 
 watch(() => [props.namespace, props.entity], () => {
   refresh()
