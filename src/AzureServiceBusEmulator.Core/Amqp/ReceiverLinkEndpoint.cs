@@ -102,8 +102,9 @@ public class ReceiverLinkEndpoint : LinkEndpoint
     {
         var lockGuid = Guid.TryParse(brokered.LockToken, out var guid) ? guid : Guid.NewGuid();
 
-        var message = new Message(brokered.Body ?? [])
+        var message = new Message()
         {
+            BodySection = new Data { Binary = brokered.Body ?? [] },
             Properties = new Properties
             {
                 MessageId = brokered.MessageId,
