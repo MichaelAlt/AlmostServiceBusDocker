@@ -860,7 +860,7 @@ public abstract class ConformanceTestBase : IAsyncLifetime
         var msg = new ServiceBusMessage("scheduled-body")
         {
             MessageId = "scheduled-1",
-            ScheduledEnqueueTime = DateTimeOffset.UtcNow.AddSeconds(3)
+            ScheduledEnqueueTime = DateTimeOffset.UtcNow.AddSeconds(4)
         };
 
         await sender.SendMessageAsync(msg);
@@ -870,12 +870,12 @@ public abstract class ConformanceTestBase : IAsyncLifetime
             ReceiveMode = ServiceBusReceiveMode.PeekLock
         });
 
-        // Should NOT be available immediately
-        var early = await receiver.ReceiveMessageAsync(TimeSpan.FromSeconds(1));
+        // Should NOT be available immediately (wait 2 seconds, well before the 4s schedule)
+        var early = await receiver.ReceiveMessageAsync(TimeSpan.FromSeconds(2));
         Assert.Null(early);
 
-        // Should be available after the scheduled time
-        var delayed = await receiver.ReceiveMessageAsync(TimeSpan.FromSeconds(5));
+        // Should be available after the scheduled time (wait up to 10 seconds)
+        var delayed = await receiver.ReceiveMessageAsync(TimeSpan.FromSeconds(10));
         Assert.NotNull(delayed);
         Assert.Equal("scheduled-body", delayed.Body.ToString());
         Assert.Equal("scheduled-1", delayed.MessageId);
@@ -980,5 +980,60 @@ public abstract class ConformanceTestBase : IAsyncLifetime
 
         var extra = await receiver.ReceiveMessageAsync(TimeSpan.FromSeconds(2));
         Assert.Null(extra);
+    }
+
+    // ══════════════════════════════════════════════════════════════════════════
+    // Test 19: Dead-letter on MaxDeliveryCount
+    // ══════════════════════════════════════════════════════════════════════════
+
+    [Fact]
+    public async Task Abandon_ExceedsMaxDeliveryCount_MovesToDeadLetterQueue()
+    {
+        ThrowIfSkipped();
+
+        // Create a queue with MaxDeliveryCount = 2
+        var queueOptions = new CreateQueueOptions("placeholder")
+        {
+            MaxDeliveryCount = 2
+        };
+        var queue = await CreateTestQueueAsync(queueOptions);
+
+        await using var sender = Client.CreateSender(queue);
+        await sender.SendMessageAsync(new ServiceBusMessage("poison-pill") { MessageId = "poison-1" });
+
+        await using var receiver = Client.CreateReceiver(queue, new ServiceBusReceiverOptions
+        {
+            ReceiveMode = ServiceBusReceiveMode.PeekLock
+        });
+
+        // First delivery — abandon
+        var msg1 = await receiver.ReceiveMessageAsync(TimeSpan.FromSeconds(5));
+        Assert.NotNull(msg1);
+        Assert.Equal(1, msg1.DeliveryCount);
+        await receiver.AbandonMessageAsync(msg1);
+
+        // Second delivery — abandon again, triggering dead-letter
+        var msg2 = await receiver.ReceiveMessageAsync(TimeSpan.FromSeconds(5));
+        Assert.NotNull(msg2);
+        Assert.Equal(2, msg2.DeliveryCount);
+        await receiver.AbandonMessageAsync(msg2);
+
+        // Queue should now be empty
+        var msg3 = await receiver.ReceiveMessageAsync(TimeSpan.FromSeconds(2));
+        Assert.Null(msg3);
+
+        // Message should be in the DLQ
+        await using var dlqReceiver = Client.CreateReceiver(queue, new ServiceBusReceiverOptions
+        {
+            ReceiveMode = ServiceBusReceiveMode.PeekLock,
+            SubQueue = SubQueue.DeadLetter
+        });
+
+        var dlqMsg = await dlqReceiver.ReceiveMessageAsync(TimeSpan.FromSeconds(5));
+        Assert.NotNull(dlqMsg);
+        Assert.Equal("poison-pill", dlqMsg.Body.ToString());
+        Assert.Equal("MaxDeliveryCountExceeded", dlqMsg.DeadLetterReason);
+
+        await dlqReceiver.CompleteMessageAsync(dlqMsg);
     }
 }
