@@ -67,9 +67,15 @@ dashApp.MapFallbackToFile("index.html");
 
 await dashApp.StartAsync();
 
+// ── Scheduled message processor ──
+
+var defaultContext = registry.GetOrCreate("default");
+var scheduledProcessor = new ScheduledMessageProcessor(defaultContext);
+scheduledProcessor.StartBackground(TimeSpan.FromMilliseconds(500));
+
 // ── AMQP server ──
 
-var amqpServer = new AmqpServer(new AmqpServerOptions { Port = internalAmqpPort }, registry);
+var amqpServer = new AmqpServer(new AmqpServerOptions { Port = internalAmqpPort }, registry, scheduledProcessor);
 amqpServer.Start();
 
 // ── TLS multiplexers ──
@@ -109,6 +115,7 @@ try { await Task.Delay(Timeout.Infinite, shutdownCts.Token); } catch (OperationC
 
 Console.WriteLine("Shutting down...");
 multiplexerCts.Cancel();
+scheduledProcessor.Dispose();
 amqpServer.Stop();
 
 using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(2));

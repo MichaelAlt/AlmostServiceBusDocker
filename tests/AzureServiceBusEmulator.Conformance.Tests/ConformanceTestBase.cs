@@ -840,4 +840,46 @@ public abstract class ConformanceTestBase : IAsyncLifetime
             $"Expected {totalMessages} but received {receivedCount} ({uniqueCount} unique)");
         Assert.Equal(totalMessages, uniqueCount);
     }
+
+    // ══════════════════════════════════════════════════════════════════════════
+    // Test 16: Scheduled Messages
+    // ══════════════════════════════════════════════════════════════════════════
+
+    [Fact]
+    public async Task ScheduledMessage_NotReceivedBeforeScheduledTime()
+    {
+        ThrowIfSkipped();
+        var queue = await CreateTestQueueAsync();
+
+        await using var sender = Client.CreateSender(queue);
+
+        // Send a message with ScheduledEnqueueTime set in the future.
+        // When ScheduledEnqueueTime is set, the Azure SDK sets the
+        // x-opt-scheduled-enqueue-time AMQP annotation, and the broker
+        // should defer delivery until the scheduled time.
+        var msg = new ServiceBusMessage("scheduled-body")
+        {
+            MessageId = "scheduled-1",
+            ScheduledEnqueueTime = DateTimeOffset.UtcNow.AddSeconds(3)
+        };
+
+        await sender.SendMessageAsync(msg);
+
+        await using var receiver = Client.CreateReceiver(queue, new ServiceBusReceiverOptions
+        {
+            ReceiveMode = ServiceBusReceiveMode.PeekLock
+        });
+
+        // Should NOT be available immediately
+        var early = await receiver.ReceiveMessageAsync(TimeSpan.FromSeconds(1));
+        Assert.Null(early);
+
+        // Should be available after the scheduled time
+        var delayed = await receiver.ReceiveMessageAsync(TimeSpan.FromSeconds(5));
+        Assert.NotNull(delayed);
+        Assert.Equal("scheduled-body", delayed.Body.ToString());
+        Assert.Equal("scheduled-1", delayed.MessageId);
+
+        await receiver.CompleteMessageAsync(delayed);
+    }
 }

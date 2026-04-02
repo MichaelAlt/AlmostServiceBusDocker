@@ -16,6 +16,7 @@ public class ServiceBusEmulatorFixture : IAsyncDisposable
     private AmqpServer? _amqpServer;
     private TcpMultiplexer? _multiplexer;
     private CancellationTokenSource? _multiplexerCts;
+    private ScheduledMessageProcessor? _scheduledProcessor;
     private readonly MessageEventBus _eventBus = new();
     private readonly NamespaceRegistry _registry;
     private readonly string _namespace;
@@ -57,8 +58,12 @@ public class ServiceBusEmulatorFixture : IAsyncDisposable
         _webApp.MapDashboardSse(_eventBus);
         await _webApp.StartAsync();
 
-        // 2. Start AMQP on internal port (with SASL for Azure SDK compatibility)
-        _amqpServer = new AmqpServer(new AmqpServerOptions { Port = AmqpPort }, _registry);
+        // 2. Start scheduled message processor
+        _scheduledProcessor = new ScheduledMessageProcessor(_registry.GetOrCreate("default"));
+        _scheduledProcessor.StartBackground(TimeSpan.FromMilliseconds(500));
+
+        // 3. Start AMQP on internal port (with SASL for Azure SDK compatibility)
+        _amqpServer = new AmqpServer(new AmqpServerOptions { Port = AmqpPort }, _registry, _scheduledProcessor);
         _amqpServer.Start();
 
         // 3. Start multiplexer on public port with TLS termination
@@ -73,6 +78,7 @@ public class ServiceBusEmulatorFixture : IAsyncDisposable
         if (_multiplexerCts is not null)
             await _multiplexerCts.CancelAsync();
         _amqpServer?.Stop();
+        _scheduledProcessor?.Dispose();
         if (_webApp is not null)
             await _webApp.StopAsync();
     }
