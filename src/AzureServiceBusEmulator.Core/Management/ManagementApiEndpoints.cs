@@ -157,17 +157,27 @@ public static class ManagementApiEndpoints
 
             var ns = ResolveNamespace(request, registry);
 
-            // List all queues: GET /$Resources/Queues
+            // List all queues: GET /$Resources/Queues?$skip=0&$top=100
             if (path.Equals("$Resources/Queues", StringComparison.OrdinalIgnoreCase))
             {
-                var feed = AtomXmlWriter.WriteQueueFeed(ns.GetQueues());
+                var (skip, top) = ParsePagination(request);
+                var queues = ns.GetQueues()
+                    .OrderBy(q => q.Name, StringComparer.OrdinalIgnoreCase)
+                    .Skip(skip)
+                    .Take(top);
+                var feed = AtomXmlWriter.WriteQueueFeed(queues);
                 return Results.Content(feed, AtomXmlContentType);
             }
 
-            // List all topics: GET /$Resources/Topics
+            // List all topics: GET /$Resources/Topics?$skip=0&$top=100
             if (path.Equals("$Resources/Topics", StringComparison.OrdinalIgnoreCase))
             {
-                var feed = AtomXmlWriter.WriteTopicFeed(ns.GetTopics());
+                var (skip, top) = ParsePagination(request);
+                var topics = ns.GetTopics()
+                    .OrderBy(t => t.Name, StringComparer.OrdinalIgnoreCase)
+                    .Skip(skip)
+                    .Take(top);
+                var feed = AtomXmlWriter.WriteTopicFeed(topics);
                 return Results.Content(feed, AtomXmlContentType);
             }
 
@@ -187,12 +197,14 @@ public static class ManagementApiEndpoints
 
             if (TryParseRuleListPath(path, out topicName, out subName))
             {
-                // GET /{topicName}/Subscriptions/{subName}/Rules
+                // GET /{topicName}/Subscriptions/{subName}/Rules?$skip=0&$top=100
                 var sub = ns.GetSubscription(topicName, subName);
                 if (sub is null)
                     return ManagementApiErrors.EntityNotFound($"{topicName}/Subscriptions/{subName}");
 
-                var feed = AtomXmlWriter.WriteRuleFeed(sub.GetRules());
+                var (rSkip, rTop) = ParsePagination(request);
+                var rules = sub.GetRules().Skip(rSkip).Take(rTop);
+                var feed = AtomXmlWriter.WriteRuleFeed(rules);
                 return Results.Content(feed, AtomXmlContentType);
             }
 
@@ -208,12 +220,14 @@ public static class ManagementApiEndpoints
 
             if (TryParseSubscriptionListPath(path, out topicName))
             {
-                // GET /{topicName}/Subscriptions
+                // GET /{topicName}/Subscriptions?$skip=0&$top=100
                 var topic = ns.GetTopic(topicName);
                 if (topic is null)
                     return ManagementApiErrors.EntityNotFound(topicName);
 
-                var feed = AtomXmlWriter.WriteSubscriptionFeed(topic.GetSubscriptions());
+                var (sSkip, sTop) = ParsePagination(request);
+                var subs = topic.GetSubscriptions().Skip(sSkip).Take(sTop);
+                var feed = AtomXmlWriter.WriteSubscriptionFeed(subs);
                 return Results.Content(feed, AtomXmlContentType);
             }
 
@@ -348,6 +362,28 @@ public static class ManagementApiEndpoints
 
         topicName = path[..^"/Subscriptions".Length];
         return topicName.Length > 0;
+    }
+
+    // ── Pagination ────────────────────────────────────────────────────────────
+
+    private static (int Skip, int Top) ParsePagination(HttpRequest request)
+    {
+        var skip = 0;
+        var top = 100;
+
+        if (request.Query.TryGetValue("$skip", out var skipValue)
+            && int.TryParse(skipValue, out var parsedSkip) && parsedSkip >= 0)
+        {
+            skip = parsedSkip;
+        }
+
+        if (request.Query.TryGetValue("$top", out var topValue)
+            && int.TryParse(topValue, out var parsedTop) && parsedTop > 0)
+        {
+            top = parsedTop;
+        }
+
+        return (skip, top);
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────────
