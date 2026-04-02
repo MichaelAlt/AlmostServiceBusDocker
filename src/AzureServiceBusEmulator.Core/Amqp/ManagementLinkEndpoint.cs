@@ -36,6 +36,10 @@ public class ManagementLinkEndpoint : IRequestProcessor
                 HandleScheduleMessage(requestContext);
                 break;
 
+            case "com.microsoft:renew-lock":
+                HandleRenewLock(requestContext);
+                break;
+
             default:
                 ReplyOk(requestContext);
                 break;
@@ -103,6 +107,69 @@ public class ManagementLinkEndpoint : IRequestProcessor
         requestContext.Complete(response);
     }
 
+    private void HandleRenewLock(RequestContext requestContext)
+    {
+        var expirations = new List<DateTime>();
+
+        if (requestContext.Message.Body is Map renewBody
+            && TryGetMapValue(renewBody, "lock-tokens", out var tokensObj)
+            && tokensObj is Guid[] lockTokenGuids)
+        {
+            // Try to find the queue. The entity name may be in the associated-link-name
+            // or we scan all queues for the lock token.
+            foreach (var lockGuid in lockTokenGuids)
+            {
+                var lockToken = lockGuid.ToString();
+                DateTimeOffset? newExpiry = null;
+
+                // Scan all queues in the namespace for the lock token
+                foreach (var queue in _context.GetQueues())
+                {
+                    newExpiry = queue.RenewLock(lockToken);
+                    if (newExpiry.HasValue) break;
+
+                    // Also check the queue's DLQ
+                    newExpiry = queue.DeadLetterQueue.RenewLock(lockToken);
+                    if (newExpiry.HasValue) break;
+                }
+
+                // Also check subscription queues
+                if (!newExpiry.HasValue)
+                {
+                    foreach (var topic in _context.GetTopics())
+                    {
+                        foreach (var sub in topic.GetSubscriptions())
+                        {
+                            newExpiry = sub.Queue.RenewLock(lockToken);
+                            if (newExpiry.HasValue) break;
+                        }
+                        if (newExpiry.HasValue) break;
+                    }
+                }
+
+                expirations.Add(newExpiry?.UtcDateTime ?? DateTime.UtcNow.AddMinutes(5));
+            }
+        }
+
+        var responseBody = new Map
+        {
+            { "expirations", expirations.ToArray() }
+        };
+        var response = new Message(responseBody)
+        {
+            ApplicationProperties = new ApplicationProperties
+            {
+                ["status-code"] = 200,
+                ["status-description"] = "OK"
+            },
+            Properties = new Properties
+            {
+                CorrelationId = requestContext.Message.Properties?.MessageId
+            }
+        };
+        requestContext.Complete(response);
+    }
+
     private void HandleCancelScheduledMessage(RequestContext requestContext)
     {
         if (_scheduledProcessor is not null && requestContext.Message.Body is Map body)
@@ -117,6 +184,21 @@ public class ManagementLinkEndpoint : IRequestProcessor
         }
 
         ReplyOk(requestContext);
+    }
+
+    /// <summary>
+    /// Looks up a key in an AMQP Map, trying both Symbol and String key types.
+    /// The Azure SDK's Microsoft.Azure.Amqp library encodes map keys as strings,
+    /// while AMQPNetLite uses Symbols.
+    /// </summary>
+    private static bool TryGetMapValue(Map map, string key, out object? value)
+    {
+        if (map.TryGetValue(new Symbol(key), out value))
+            return true;
+        if (map.TryGetValue(key, out value))
+            return true;
+        value = null;
+        return false;
     }
 
     private static void ReplyOk(RequestContext requestContext)

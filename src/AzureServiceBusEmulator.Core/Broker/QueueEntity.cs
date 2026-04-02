@@ -229,6 +229,20 @@ public sealed class QueueEntity
     }
 
     /// <summary>
+    /// Renews the lock on a pending message, extending <see cref="BrokeredMessage.LockedUntil"/>
+    /// by <see cref="LockDuration"/>. Returns the new <see cref="BrokeredMessage.LockedUntil"/>
+    /// time, or <see langword="null"/> if the message was not found in pending.
+    /// </summary>
+    public DateTimeOffset? RenewLock(string lockToken)
+    {
+        if (!_pending.TryGetValue(lockToken, out var message))
+            return null;
+
+        message.LockedUntil = DateTimeOffset.UtcNow.Add(LockDuration);
+        return message.LockedUntil;
+    }
+
+    /// <summary>
     /// Returns a snapshot of messages in the queue without removing them.
     /// </summary>
     public IReadOnlyList<BrokeredMessage> PeekMessages(int maxCount = 50)

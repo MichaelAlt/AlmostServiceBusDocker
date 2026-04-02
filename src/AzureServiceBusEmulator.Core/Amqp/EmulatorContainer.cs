@@ -123,6 +123,13 @@ public class EmulatorContainer : IContainer
             lock (_requestProcessors)
             {
                 _requestProcessors.TryGetValue(address, out entry);
+
+                // Entity-scoped $management links (e.g. "my-queue/$management")
+                // should route to the global $management request processor.
+                if (entry is null && address.EndsWith("/$management", StringComparison.OrdinalIgnoreCase))
+                {
+                    _requestProcessors.TryGetValue("$management", out entry);
+                }
             }
 
             if (entry != null)
@@ -183,7 +190,17 @@ public class EmulatorContainer : IContainer
         {
             // This is the response link (server sends responses back to client).
             // The client's attach has a Target with the reply-to address.
-            var replyTo = ((Target)attach.Target).Address;
+            if (attach.Target is not Target target)
+            {
+                Log.LogWarning("Response link for '{Address}' has no Target — cannot extract reply-to. Target type: {TargetType}",
+                    address, attach.Target?.GetType().FullName ?? "null");
+                link.CompleteAttach(attach, new Error(new Symbol("amqp:internal-error"))
+                {
+                    Description = $"Response link for '{address}' has no Target."
+                });
+                return;
+            }
+            var replyTo = target.Address;
 
             lock (entry.ResponseLinks)
             {
