@@ -16,6 +16,7 @@ public sealed class QueueEntity
     private readonly ConcurrentDictionary<string, DateTimeOffset> _recentMessageIds = new();
     private readonly bool _isDeadLetterQueue;
     private QueueEntity? _deadLetterQueue;
+    private SessionManager? _sessionManager;
     private int _messageCount;
     private long _sequenceNumber;
     private MessageEventBus? _eventBus;
@@ -43,6 +44,13 @@ public sealed class QueueEntity
     public int MaxDeliveryCount { get; set; } = 10;
 
     public bool RequiresSession { get; set; }
+
+    /// <summary>
+    /// Session manager for session-enabled queues. Created lazily when <see cref="RequiresSession"/> is true.
+    /// </summary>
+    public SessionManager? Sessions => RequiresSession
+        ? (_sessionManager ??= new SessionManager(LockDuration))
+        : null;
 
     public bool DeadLetteringOnMessageExpiration { get; set; }
 
@@ -106,6 +114,27 @@ public sealed class QueueEntity
     /// </summary>
     public void Enqueue(BrokeredMessage message)
     {
+        // Session-enabled queues route messages to the SessionManager by SessionId.
+        if (RequiresSession)
+        {
+            if (string.IsNullOrEmpty(message.SessionId))
+                return; // silently drop messages without SessionId
+
+            Sessions!.Enqueue(message);
+            // Also track in _allMessages for dashboard peek
+            message.LockToken ??= Guid.NewGuid().ToString();
+            if (message.SequenceNumber == 0)
+                message.SequenceNumber = Interlocked.Increment(ref _sequenceNumber);
+            _allMessages[message.LockToken!] = message;
+            Interlocked.Increment(ref _messageCount);
+            _eventBus?.Publish(new MessageEvent(
+                MessageEventType.Enqueued, _namespaceName ?? "", _entityName ?? "",
+                message.MessageId, message.SequenceNumber, message.ContentType,
+                TruncateBody(message), ExtractScalars(message),
+                DateTimeOffset.UtcNow));
+            return;
+        }
+
         // Duplicate detection: silently ignore messages with recently-seen MessageIds.
         if (RequiresDuplicateDetection && !string.IsNullOrEmpty(message.MessageId))
         {
