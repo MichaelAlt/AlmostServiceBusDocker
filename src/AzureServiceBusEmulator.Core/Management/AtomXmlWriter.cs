@@ -52,7 +52,8 @@ public static class AtomXmlWriter
             Elem("MaxDeliveryCount", queue.MaxDeliveryCount),
             Elem("EnableBatchedOperations", queue.EnableBatchedOperations),
             OptElem("ForwardTo", queue.ForwardTo),
-            OptElem("UserMetadata", queue.UserMetadata));
+            OptElem("UserMetadata", queue.UserMetadata),
+            queue.AutoDeleteOnIdle.HasValue ? Elem("AutoDeleteOnIdle", FormatTimeSpan(queue.AutoDeleteOnIdle.Value)) : null);
 
         return BuildEntry(queue.Name, desc);
     }
@@ -72,7 +73,8 @@ public static class AtomXmlWriter
             Elem("DefaultMessageTimeToLive", FormatTimeSpan(topic.DefaultMessageTimeToLive)),
             Elem("MaxSizeInMegabytes", topic.MaxSizeInMegabytes),
             Elem("EnableBatchedOperations", topic.EnableBatchedOperations),
-            OptElem("UserMetadata", topic.UserMetadata));
+            OptElem("UserMetadata", topic.UserMetadata),
+            topic.AutoDeleteOnIdle.HasValue ? Elem("AutoDeleteOnIdle", FormatTimeSpan(topic.AutoDeleteOnIdle.Value)) : null);
 
         return BuildEntry(topic.Name, desc);
     }

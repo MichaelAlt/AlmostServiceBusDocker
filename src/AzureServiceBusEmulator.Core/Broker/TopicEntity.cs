@@ -27,6 +27,8 @@ public sealed class TopicEntity
 
     public bool EnableBatchedOperations { get; set; } = true;
 
+    public TimeSpan? AutoDeleteOnIdle { get; set; }
+
     public string? UserMetadata { get; set; }
 
     // --- Subscription management ---

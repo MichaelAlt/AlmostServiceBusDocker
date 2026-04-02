@@ -15,13 +15,15 @@ public record QueueProperties(
     int MaxDeliveryCount,
     bool EnableBatchedOperations,
     string? ForwardTo,
-    string? UserMetadata);
+    string? UserMetadata,
+    TimeSpan? AutoDeleteOnIdle = null);
 
 public record TopicProperties(
     TimeSpan DefaultMessageTimeToLive,
     long MaxSizeInMegabytes,
     bool EnableBatchedOperations,
-    string? UserMetadata);
+    string? UserMetadata,
+    TimeSpan? AutoDeleteOnIdle = null);
 
 public record SubscriptionProperties(
     TimeSpan LockDuration,
@@ -71,7 +73,8 @@ public static class AtomXmlReader
             MaxDeliveryCount: ParseOptionalInt(desc, "MaxDeliveryCount") ?? 10,
             EnableBatchedOperations: ParseOptionalBool(desc, "EnableBatchedOperations") ?? true,
             ForwardTo: NormalizeForwardTo(ParseOptionalString(desc, "ForwardTo")),
-            UserMetadata: ParseOptionalString(desc, "UserMetadata"));
+            UserMetadata: ParseOptionalString(desc, "UserMetadata"),
+            AutoDeleteOnIdle: ParseOptionalTimeSpan(desc, "AutoDeleteOnIdle"));
     }
 
     public static TopicProperties ReadTopicProperties(string xml)
@@ -81,7 +84,8 @@ public static class AtomXmlReader
             DefaultMessageTimeToLive: ParseOptionalTimeSpan(desc, "DefaultMessageTimeToLive") ?? TimeSpan.MaxValue,
             MaxSizeInMegabytes: ParseOptionalLong(desc, "MaxSizeInMegabytes") ?? 1024,
             EnableBatchedOperations: ParseOptionalBool(desc, "EnableBatchedOperations") ?? true,
-            UserMetadata: ParseOptionalString(desc, "UserMetadata"));
+            UserMetadata: ParseOptionalString(desc, "UserMetadata"),
+            AutoDeleteOnIdle: ParseOptionalTimeSpan(desc, "AutoDeleteOnIdle"));
     }
 
     public static SubscriptionProperties ReadSubscriptionProperties(string xml)

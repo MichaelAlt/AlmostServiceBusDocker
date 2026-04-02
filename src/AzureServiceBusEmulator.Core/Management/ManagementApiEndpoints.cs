@@ -441,6 +441,7 @@ public static class ManagementApiEndpoints
             entity.EnableBatchedOperations = props.EnableBatchedOperations;
             entity.ForwardTo = props.ForwardTo;
             entity.UserMetadata = props.UserMetadata;
+            entity.AutoDeleteOnIdle = props.AutoDeleteOnIdle;
         }
         catch
         {
@@ -457,6 +458,7 @@ public static class ManagementApiEndpoints
             entity.MaxSizeInMegabytes = props.MaxSizeInMegabytes;
             entity.EnableBatchedOperations = props.EnableBatchedOperations;
             entity.UserMetadata = props.UserMetadata;
+            entity.AutoDeleteOnIdle = props.AutoDeleteOnIdle;
         }
         catch
         {

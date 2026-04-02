@@ -55,6 +55,8 @@ public sealed class QueueEntity
 
     public string? ForwardDeadLetteredMessagesTo { get; set; }
 
+    public TimeSpan? AutoDeleteOnIdle { get; set; }
+
     public string? UserMetadata { get; set; }
 
     /// <summary>
