@@ -32,6 +32,7 @@ public class AmqpServer : IDisposable
         var defaultContext = _registry.GetOrCreate("default");
 
         var container = new EmulatorContainer();
+        container.SetNamespaceRegistry(_registry, _scheduledProcessor);
         container.RegisterRequestProcessor("$cbs", new CbsRequestProcessor());
         container.RegisterRequestProcessor("$management", new ManagementLinkEndpoint(defaultContext, _scheduledProcessor));
         container.RegisterLinkProcessor(new ServiceBusLinkProcessor(_registry, _scheduledProcessor));

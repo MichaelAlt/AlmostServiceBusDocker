@@ -4,6 +4,7 @@ using global::Amqp;
 using global::Amqp.Framing;
 using global::Amqp.Listener;
 using global::Amqp.Types;
+using AzureServiceBusEmulator.Core.Broker;
 using Microsoft.Extensions.Logging;
 
 namespace AzureServiceBusEmulator.Core.Amqp;
@@ -24,6 +25,8 @@ public class EmulatorContainer : IContainer
 
     private readonly Dictionary<string, RequestProcessorEntry> _requestProcessors = new(StringComparer.OrdinalIgnoreCase);
     private ILinkProcessor? _linkProcessor;
+    private NamespaceRegistry? _registry;
+    private ScheduledMessageProcessor? _scheduledProcessor;
 
     // Reflection accessor for AttachContext's internal constructor.
     // AttachContext(ListenerLink link, Attach attach) is internal in AMQPNetLite,
@@ -51,6 +54,15 @@ public class EmulatorContainer : IContainer
     public X509Certificate2? ServiceCertificate => null;
 
     public IDictionary<string, TransportProvider> CustomTransports { get; } = new Dictionary<string, TransportProvider>();
+
+    /// <summary>
+    /// Configures the namespace registry and scheduled processor for entity-scoped management links.
+    /// </summary>
+    public void SetNamespaceRegistry(NamespaceRegistry registry, ScheduledMessageProcessor? scheduledProcessor = null)
+    {
+        _registry = registry;
+        _scheduledProcessor = scheduledProcessor;
+    }
 
     /// <summary>
     /// Registers an <see cref="IRequestProcessor"/> for a given address (e.g. "$cbs", "$management").
@@ -125,10 +137,21 @@ public class EmulatorContainer : IContainer
                 _requestProcessors.TryGetValue(address, out entry);
 
                 // Entity-scoped $management links (e.g. "my-queue/$management")
-                // should route to the global $management request processor.
+                // Create an entity-specific management endpoint if possible, otherwise
+                // fall back to the global $management request processor.
                 if (entry is null && address.EndsWith("/$management", StringComparison.OrdinalIgnoreCase))
                 {
-                    _requestProcessors.TryGetValue("$management", out entry);
+                    var entityName = address[..^"/$management".Length].TrimStart('/');
+                    var entityEntry = TryCreateEntityManagementEntry(entityName);
+                    if (entityEntry is not null)
+                    {
+                        _requestProcessors[address] = entityEntry;
+                        entry = entityEntry;
+                    }
+                    else
+                    {
+                        _requestProcessors.TryGetValue("$management", out entry);
+                    }
                 }
             }
 
@@ -307,6 +330,27 @@ public class EmulatorContainer : IContainer
         {
             Log.LogError("Failed to create RequestContext via reflection.");
         }
+    }
+
+    /// <summary>
+    /// Attempts to create an entity-specific management endpoint for the given entity name.
+    /// Returns null if the registry is not configured or the entity is not found.
+    /// </summary>
+    private RequestProcessorEntry? TryCreateEntityManagementEntry(string entityName)
+    {
+        if (_registry is null)
+            return null;
+
+        // Resolve the namespace context — use "default" since CBS auth may have resolved it
+        var context = _registry.GetOrCreate("default");
+        var queue = context.ResolveQueue(entityName);
+        if (queue is not null)
+        {
+            var processor = new ManagementLinkEndpoint(context, _scheduledProcessor, scopedQueue: queue);
+            return new RequestProcessorEntry(processor);
+        }
+
+        return null;
     }
 
     private static AttachContext? CreateAttachContext(ListenerLink link, Attach attach)

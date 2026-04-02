@@ -15,11 +15,13 @@ public class ManagementLinkEndpoint : IRequestProcessor
 
     private readonly NamespaceContext _context;
     private readonly ScheduledMessageProcessor? _scheduledProcessor;
+    private readonly QueueEntity? _scopedQueue;
 
-    public ManagementLinkEndpoint(NamespaceContext context, ScheduledMessageProcessor? scheduledProcessor = null)
+    public ManagementLinkEndpoint(NamespaceContext context, ScheduledMessageProcessor? scheduledProcessor = null, QueueEntity? scopedQueue = null)
     {
         _context = context;
         _scheduledProcessor = scheduledProcessor;
+        _scopedQueue = scopedQueue;
     }
 
     public void Process(RequestContext requestContext)
@@ -38,6 +40,18 @@ public class ManagementLinkEndpoint : IRequestProcessor
 
             case "com.microsoft:renew-lock":
                 HandleRenewLock(requestContext);
+                break;
+
+            case "com.microsoft:renew-session-lock":
+                HandleRenewSessionLock(requestContext);
+                break;
+
+            case "com.microsoft:get-session-state":
+                HandleGetSessionState(requestContext);
+                break;
+
+            case "com.microsoft:set-session-state":
+                HandleSetSessionState(requestContext);
                 break;
 
             default:
@@ -184,6 +198,136 @@ public class ManagementLinkEndpoint : IRequestProcessor
         }
 
         ReplyOk(requestContext);
+    }
+
+    private void HandleRenewSessionLock(RequestContext requestContext)
+    {
+        var sessionId = requestContext.Message.ApplicationProperties?["session-id"] as string;
+        var sessionManager = FindSessionManager();
+        if (sessionId is null || sessionManager is null)
+        {
+            SendErrorResponse(requestContext, 400, "Session ID required");
+            return;
+        }
+
+        var lockedUntil = sessionManager.RenewSessionLock(sessionId);
+        if (lockedUntil is null)
+        {
+            SendErrorResponse(requestContext, 404, "Session not found or not locked");
+            return;
+        }
+
+        var responseBody = new Map
+        {
+            { new Symbol("expiration"), lockedUntil.Value.UtcDateTime }
+        };
+        var response = new Message(responseBody)
+        {
+            ApplicationProperties = new ApplicationProperties
+            {
+                ["status-code"] = 200,
+                ["status-description"] = "OK"
+            },
+            Properties = new Properties { CorrelationId = requestContext.Message.Properties?.MessageId }
+        };
+        requestContext.Complete(response);
+    }
+
+    private void HandleGetSessionState(RequestContext requestContext)
+    {
+        var sessionId = requestContext.Message.ApplicationProperties?["session-id"] as string;
+        if (sessionId is null)
+        {
+            SendErrorResponse(requestContext, 400, "Session ID required");
+            return;
+        }
+
+        var sessionManager = FindSessionManager();
+        var state = sessionManager?.GetSessionState(sessionId);
+
+        var responseBody = new Map
+        {
+            { new Symbol("session-state"), state ?? Array.Empty<byte>() }
+        };
+        var response = new Message(responseBody)
+        {
+            ApplicationProperties = new ApplicationProperties
+            {
+                ["status-code"] = 200,
+                ["status-description"] = "OK"
+            },
+            Properties = new Properties { CorrelationId = requestContext.Message.Properties?.MessageId }
+        };
+        requestContext.Complete(response);
+    }
+
+    private void HandleSetSessionState(RequestContext requestContext)
+    {
+        var sessionId = requestContext.Message.ApplicationProperties?["session-id"] as string;
+        if (sessionId is null)
+        {
+            SendErrorResponse(requestContext, 400, "Session ID required");
+            return;
+        }
+
+        byte[]? state = null;
+        if (requestContext.Message.Body is Map setBody)
+        {
+            if (TryGetMapValue(setBody, "session-state", out var stateObj))
+            {
+                state = stateObj switch
+                {
+                    byte[] bytes => bytes.Length > 0 ? bytes : null,
+                    null => null,
+                    _ => null
+                };
+            }
+        }
+
+        FindSessionManager()?.SetSessionState(sessionId, state);
+
+        var response = new Message()
+        {
+            ApplicationProperties = new ApplicationProperties
+            {
+                ["status-code"] = 200,
+                ["status-description"] = "OK"
+            },
+            Properties = new Properties { CorrelationId = requestContext.Message.Properties?.MessageId }
+        };
+        requestContext.Complete(response);
+    }
+
+    /// <summary>
+    /// Finds the SessionManager for session operations. Uses the scoped queue if available,
+    /// otherwise searches all queues in the namespace.
+    /// </summary>
+    private SessionManager? FindSessionManager()
+    {
+        if (_scopedQueue?.Sessions is not null)
+            return _scopedQueue.Sessions;
+
+        // Fallback: search all queues in the context for one with sessions
+        foreach (var queue in _context.GetQueues())
+        {
+            if (queue.Sessions is not null)
+                return queue.Sessions;
+        }
+        return null;
+    }
+
+    private void SendErrorResponse(RequestContext requestContext, int statusCode, string description)
+    {
+        var response = new Message()
+        {
+            ApplicationProperties = new ApplicationProperties
+            {
+                ["status-code"] = statusCode,
+                ["status-description"] = description
+            },
+            Properties = new Properties { CorrelationId = requestContext.Message.Properties?.MessageId }
+        };
+        requestContext.Complete(response);
     }
 
     /// <summary>
