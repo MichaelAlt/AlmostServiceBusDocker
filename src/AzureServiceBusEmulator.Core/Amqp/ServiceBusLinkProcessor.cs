@@ -83,6 +83,12 @@ public class ServiceBusLinkProcessor : ILinkProcessor
         }
         else
         {
+            // Tell the client we'll pre-settle all deliveries (ReceiveAndDelete).
+            // AMQPNetLite generates 4-byte delivery tags but the Azure SDK expects
+            // 16-byte GUIDs for PeekLock. By setting SndSettleMode.Settled, the SDK
+            // knows not to attempt Complete/Abandon (which require a valid lock token).
+            attachContext.Attach.SndSettleMode = SenderSettleMode.Settled;
+
             // Client is receiving messages from us -- resolve queue
             var queue = context.ResolveQueue(address);
             if (queue is null)
