@@ -71,8 +71,9 @@ public class ReceiverLinkEndpoint : LinkEndpoint
                 }
                 catch
                 {
-                    // Send failed — link is dead. Re-enqueue and stop.
-                    _queue.Enqueue(brokered);
+                    // Send failed — link is dead, stop the pump.
+                    // Don't re-enqueue: the message is already tracked as pending
+                    // and re-enqueueing would create duplicates (R-DUPE).
                     break;
                 }
             }
