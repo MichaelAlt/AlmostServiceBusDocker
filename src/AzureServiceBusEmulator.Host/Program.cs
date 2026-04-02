@@ -93,16 +93,27 @@ if (amqpsPort != publicPort)
 }
 
 // Microsoft emulator compatibility: management API on port 5300
-// The Azure SDK with UseDevelopmentEmulator=true expects HTTP management on 5300
 var mgmtApiPort = 5300;
 var mgmtMultiplexer = new TcpMultiplexer(mgmtApiPort, internalAmqpPort, internalHttpPort, cert);
 _ = mgmtMultiplexer.StartAsync(multiplexerCts.Token);
+
+// HTTPS on port 443 — the Azure SDK's FQDN-based admin client defaults here
+// when using NamedKeyCredential (MassTransit's test infrastructure pattern)
+try
+{
+    var httpsMultiplexer = new TcpMultiplexer(443, internalAmqpPort, internalHttpPort, cert);
+    _ = httpsMultiplexer.StartAsync(multiplexerCts.Token);
+}
+catch (Exception ex)
+{
+    Console.WriteLine($"  Warning: Could not bind port 443 ({ex.Message}). FQDN-based admin clients may not work.");
+}
 
 // ── Shutdown ──
 
 Console.WriteLine($"Azure Service Bus Emulator started");
 Console.WriteLine($"  Service Bus: localhost:{publicPort} (HTTPS/AMQP), localhost:{amqpsPort} (AMQPS)");
-Console.WriteLine($"  Management:  localhost:{mgmtApiPort} (HTTP)");
+Console.WriteLine($"  Management:  localhost:{mgmtApiPort} (HTTP), localhost:443 (HTTPS)");
 Console.WriteLine($"  Dashboard:   http://localhost:{dashboardPort}");
 Console.WriteLine();
 Console.WriteLine($"  Connection String: Endpoint=sb://localhost:{publicPort};SharedAccessKeyName=RootManageSharedAccessKey;SharedAccessKey=emulator");
