@@ -3,6 +3,7 @@ using global::Amqp.Framing;
 using global::Amqp.Listener;
 using global::Amqp.Types;
 using AzureServiceBusEmulator.Core.Broker;
+using Microsoft.Extensions.Logging;
 
 namespace AzureServiceBusEmulator.Core.Amqp;
 
@@ -16,9 +17,11 @@ namespace AzureServiceBusEmulator.Core.Amqp;
 /// </summary>
 public class ReceiverLinkEndpoint : LinkEndpoint
 {
+    private static readonly ILogger Log = AmqpLog.CreateLogger<ReceiverLinkEndpoint>();
     private readonly QueueEntity _queue;
     private CancellationTokenSource? _pumpCts;
     private Task? _pumpTask;
+
     public ReceiverLinkEndpoint(QueueEntity queue)
     {
         _queue = queue;
@@ -26,7 +29,7 @@ public class ReceiverLinkEndpoint : LinkEndpoint
 
     public override void OnFlow(FlowContext flowContext)
     {
-        Console.WriteLine($"[{DateTime.Now:HH:mm:ss.fff}] [FLOW] queue='{_queue.Name}' credit={flowContext.Messages} drain={flowContext.Link.IsDraining}");
+        Log.LogDebug("FLOW queue='{Queue}' credit={Credit} drain={Drain}", _queue.Name, flowContext.Messages, flowContext.Link.IsDraining);
 
         // When the client sends drain=true, it wants to stop receiving.
         // Complete the drain immediately so the client can close the link.
@@ -73,7 +76,7 @@ public class ReceiverLinkEndpoint : LinkEndpoint
 
                 try
                 {
-                    Console.WriteLine($"[{DateTime.Now:HH:mm:ss.fff}] [PUMP] {brokered.MessageId} → '{_queue.Name}'");
+                    Log.LogDebug("PUMP {MessageId} → '{Queue}'", brokered.MessageId, _queue.Name);
                     var amqpMessage = ConvertToAmqpMessage(brokered);
                     link.SendMessage(amqpMessage);
                 }
@@ -99,7 +102,7 @@ public class ReceiverLinkEndpoint : LinkEndpoint
             Modified m => $"Modified: undeliverable={m.UndeliverableHere} failed={m.DeliveryFailed}",
             _ => dispositionContext.DeliveryState?.GetType().Name ?? "null"
         };
-        Console.WriteLine($"[{DateTime.Now:HH:mm:ss.fff}] [DISP] lock={lockToken} state={stateInfo} queue='{_queue.Name}'");
+        Log.LogDebug("DISP lock={LockToken} state={State} queue='{Queue}'", lockToken, stateInfo, _queue.Name);
 
         try
         {
@@ -116,7 +119,7 @@ public class ReceiverLinkEndpoint : LinkEndpoint
             // Instead, we just accept the disposition — the message is already re-enqueued
             // and will be redelivered. The client won't get a lock-lost error, but will
             // see the message again with an incremented DeliveryCount.
-            Console.WriteLine($"[{DateTime.Now:HH:mm:ss.fff}] [DISP] lock={lockToken} LOCK EXPIRED (re-enqueued) queue='{_queue.Name}'");
+            Log.LogDebug("DISP lock={LockToken} LOCK EXPIRED (re-enqueued) queue='{Queue}'", lockToken, _queue.Name);
             dispositionContext.Complete();
         }
     }

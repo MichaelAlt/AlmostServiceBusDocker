@@ -3,6 +3,7 @@ using global::Amqp.Framing;
 using global::Amqp.Listener;
 using global::Amqp.Types;
 using AzureServiceBusEmulator.Core.Broker;
+using Microsoft.Extensions.Logging;
 
 namespace AzureServiceBusEmulator.Core.Amqp;
 
@@ -12,6 +13,7 @@ namespace AzureServiceBusEmulator.Core.Amqp;
 /// </summary>
 public class SenderLinkEndpoint : LinkEndpoint
 {
+    private static readonly ILogger Log = AmqpLog.CreateLogger<SenderLinkEndpoint>();
     private readonly NamespaceContext _context;
     private readonly ScheduledMessageProcessor? _scheduledProcessor;
     private readonly string _address;
@@ -28,14 +30,13 @@ public class SenderLinkEndpoint : LinkEndpoint
         try
         {
             var brokeredMessage = ConvertToBrokeredMessage(messageContext.Message);
-            Console.WriteLine($"[RECV] {brokeredMessage.MessageId} → '{_address}'");
+            Log.LogDebug("RECV {MessageId} → '{Address}'", brokeredMessage.MessageId, _address);
             RouteMessage(_address, brokeredMessage);
             messageContext.Complete();
-            Console.WriteLine($"[RECV] {brokeredMessage.MessageId} completed");
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"[RECV] ERROR on '{_address}': {ex.Message}");
+            Log.LogWarning(ex, "RECV ERROR on '{Address}'", _address);
 
             messageContext.Complete(new global::Amqp.Framing.Error(new Symbol("amqp:internal-error"))
             {

@@ -13,6 +13,11 @@ using Vite.AspNetCore;
 var mgmtBuilder = WebApplication.CreateBuilder(args);
 mgmtBuilder.Logging.SetMinimumLevel(LogLevel.Warning);
 
+// Wire up logging for AMQP components (not DI-managed)
+AmqpLog.Factory = LoggerFactory.Create(b => b
+    .SetMinimumLevel(mgmtBuilder.Configuration.GetValue("Logging:LogLevel:AzureServiceBusEmulator.Amqp", LogLevel.Warning))
+    .AddConsole());
+
 var publicPort = mgmtBuilder.Configuration.GetValue("Port", 5672);
 var dashboardPort = mgmtBuilder.Configuration.GetValue("DashboardPort", 15672);
 var amqpsPort = 5671;

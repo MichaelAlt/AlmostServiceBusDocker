@@ -49,8 +49,8 @@ public static class AzureServiceBusEmulatorBuilderExtensions
 
         var resourceBuilder = builder.AddResource(resource)
             .WithArgs(args.ToArray())
-            .WithEndpoint(port, name: "servicebus", scheme: "tcp")
-            .WithEndpoint(dashboardPort, dashboardPort, name: "dashboard", scheme: "http")
+            .WithEndpoint(port, name: "servicebus", scheme: "tcp", isProxied: false)
+            .WithEndpoint(dashboardPort, dashboardPort, name: "dashboard", scheme: "http", isProxied: false)
             .WithExternalHttpEndpoints();
 
         // When Aspire allocates the port, pass it to the Host as --Port
