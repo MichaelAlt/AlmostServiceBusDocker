@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { onMounted, onUnmounted } from 'vue'
-import NamespaceTabs from './NamespaceTabs.vue'
+import NamespaceSelector from './NamespaceSelector.vue'
 import { useEntities } from '../composables/useEntities'
 
 const ns = defineModel<string>('namespace', { required: true })
@@ -28,7 +28,7 @@ function shortName(fullName: string) {
 
 <template>
   <div class="sidebar">
-    <NamespaceTabs :namespaces="namespaces" v-model:selected="ns" />
+    <NamespaceSelector :namespaces="namespaces" v-model:selected="ns" />
 
     <div class="search">
       <input v-model="filter" placeholder="Filter entities..." />
