@@ -28,35 +28,42 @@ public class ManagementLinkEndpoint : IRequestProcessor
     {
         var operation = requestContext.Message.ApplicationProperties?["operation"]?.ToString();
 
-        switch (operation)
+        try
         {
-            case "com.microsoft:cancel-scheduled-message":
-                HandleCancelScheduledMessage(requestContext);
-                break;
+            switch (operation)
+            {
+                case "com.microsoft:cancel-scheduled-message":
+                    HandleCancelScheduledMessage(requestContext);
+                    break;
 
-            case "com.microsoft:schedule-message":
-                HandleScheduleMessage(requestContext);
-                break;
+                case "com.microsoft:schedule-message":
+                    HandleScheduleMessage(requestContext);
+                    break;
 
-            case "com.microsoft:renew-lock":
-                HandleRenewLock(requestContext);
-                break;
+                case "com.microsoft:renew-lock":
+                    HandleRenewLock(requestContext);
+                    break;
 
-            case "com.microsoft:renew-session-lock":
-                HandleRenewSessionLock(requestContext);
-                break;
+                case "com.microsoft:renew-session-lock":
+                    HandleRenewSessionLock(requestContext);
+                    break;
 
-            case "com.microsoft:get-session-state":
-                HandleGetSessionState(requestContext);
-                break;
+                case "com.microsoft:get-session-state":
+                    HandleGetSessionState(requestContext);
+                    break;
 
-            case "com.microsoft:set-session-state":
-                HandleSetSessionState(requestContext);
-                break;
+                case "com.microsoft:set-session-state":
+                    HandleSetSessionState(requestContext);
+                    break;
 
-            default:
-                ReplyOk(requestContext);
-                break;
+                default:
+                    ReplyOk(requestContext);
+                    break;
+            }
+        }
+        catch (Exception)
+        {
+            // Swallow exceptions — the request context may already be completed/disposed
         }
     }
 
@@ -104,14 +111,14 @@ public class ManagementLinkEndpoint : IRequestProcessor
         // Return the sequence numbers as the response
         var responseBody = new Map
         {
-            { new Symbol("sequence-numbers"), sequenceNumbers.ToArray() }
+            { "sequence-numbers", sequenceNumbers.ToArray() }
         };
         var response = new Message(responseBody)
         {
             ApplicationProperties = new ApplicationProperties
             {
-                ["status-code"] = 200,
-                ["status-description"] = "OK"
+                ["statusCode"] = 200,
+                ["statusDescription"] = "OK"
             },
             Properties = new Properties
             {
@@ -173,8 +180,8 @@ public class ManagementLinkEndpoint : IRequestProcessor
         {
             ApplicationProperties = new ApplicationProperties
             {
-                ["status-code"] = 200,
-                ["status-description"] = "OK"
+                ["statusCode"] = 200,
+                ["statusDescription"] = "OK"
             },
             Properties = new Properties
             {
@@ -202,7 +209,16 @@ public class ManagementLinkEndpoint : IRequestProcessor
 
     private void HandleRenewSessionLock(RequestContext requestContext)
     {
-        var sessionId = requestContext.Message.ApplicationProperties?["session-id"] as string;
+        // The Azure SDK sends session-id in the message body map, not in ApplicationProperties
+        string? sessionId = null;
+        if (requestContext.Message.Body is Map renewBody)
+        {
+            if (TryGetMapValue(renewBody, "session-id", out var sidObj))
+                sessionId = sidObj?.ToString();
+        }
+        // Fallback: also check ApplicationProperties for compatibility
+        sessionId ??= requestContext.Message.ApplicationProperties?["session-id"] as string;
+
         var sessionManager = FindSessionManager();
         if (sessionId is null || sessionManager is null)
         {
@@ -219,14 +235,14 @@ public class ManagementLinkEndpoint : IRequestProcessor
 
         var responseBody = new Map
         {
-            { new Symbol("expiration"), lockedUntil.Value.UtcDateTime }
+            { "expiration", lockedUntil.Value.UtcDateTime }
         };
         var response = new Message(responseBody)
         {
             ApplicationProperties = new ApplicationProperties
             {
-                ["status-code"] = 200,
-                ["status-description"] = "OK"
+                ["statusCode"] = 200,
+                ["statusDescription"] = "OK"
             },
             Properties = new Properties { CorrelationId = requestContext.Message.Properties?.MessageId }
         };
@@ -235,7 +251,16 @@ public class ManagementLinkEndpoint : IRequestProcessor
 
     private void HandleGetSessionState(RequestContext requestContext)
     {
-        var sessionId = requestContext.Message.ApplicationProperties?["session-id"] as string;
+        // The Azure SDK sends session-id in the message body map, not in ApplicationProperties
+        string? sessionId = null;
+        if (requestContext.Message.Body is Map getBody)
+        {
+            if (TryGetMapValue(getBody, "session-id", out var sidObj))
+                sessionId = sidObj?.ToString();
+        }
+        // Fallback: also check ApplicationProperties for compatibility
+        sessionId ??= requestContext.Message.ApplicationProperties?["session-id"] as string;
+
         if (sessionId is null)
         {
             SendErrorResponse(requestContext, 400, "Session ID required");
@@ -247,14 +272,14 @@ public class ManagementLinkEndpoint : IRequestProcessor
 
         var responseBody = new Map
         {
-            { new Symbol("session-state"), state ?? Array.Empty<byte>() }
+            { "session-state", state ?? Array.Empty<byte>() }
         };
         var response = new Message(responseBody)
         {
             ApplicationProperties = new ApplicationProperties
             {
-                ["status-code"] = 200,
-                ["status-description"] = "OK"
+                ["statusCode"] = 200,
+                ["statusDescription"] = "OK"
             },
             Properties = new Properties { CorrelationId = requestContext.Message.Properties?.MessageId }
         };
@@ -263,16 +288,15 @@ public class ManagementLinkEndpoint : IRequestProcessor
 
     private void HandleSetSessionState(RequestContext requestContext)
     {
-        var sessionId = requestContext.Message.ApplicationProperties?["session-id"] as string;
-        if (sessionId is null)
-        {
-            SendErrorResponse(requestContext, 400, "Session ID required");
-            return;
-        }
-
+        // The Azure SDK sends session-id in the message body map, not in ApplicationProperties
+        string? sessionId = null;
         byte[]? state = null;
+
         if (requestContext.Message.Body is Map setBody)
         {
+            if (TryGetMapValue(setBody, "session-id", out var sidObj))
+                sessionId = sidObj?.ToString();
+
             if (TryGetMapValue(setBody, "session-state", out var stateObj))
             {
                 state = stateObj switch
@@ -283,6 +307,14 @@ public class ManagementLinkEndpoint : IRequestProcessor
                 };
             }
         }
+        // Fallback: also check ApplicationProperties for compatibility
+        sessionId ??= requestContext.Message.ApplicationProperties?["session-id"] as string;
+
+        if (sessionId is null)
+        {
+            SendErrorResponse(requestContext, 400, "Session ID required");
+            return;
+        }
 
         FindSessionManager()?.SetSessionState(sessionId, state);
 
@@ -290,8 +322,8 @@ public class ManagementLinkEndpoint : IRequestProcessor
         {
             ApplicationProperties = new ApplicationProperties
             {
-                ["status-code"] = 200,
-                ["status-description"] = "OK"
+                ["statusCode"] = 200,
+                ["statusDescription"] = "OK"
             },
             Properties = new Properties { CorrelationId = requestContext.Message.Properties?.MessageId }
         };
@@ -322,8 +354,8 @@ public class ManagementLinkEndpoint : IRequestProcessor
         {
             ApplicationProperties = new ApplicationProperties
             {
-                ["status-code"] = statusCode,
-                ["status-description"] = description
+                ["statusCode"] = statusCode,
+                ["statusDescription"] = description
             },
             Properties = new Properties { CorrelationId = requestContext.Message.Properties?.MessageId }
         };
@@ -351,8 +383,8 @@ public class ManagementLinkEndpoint : IRequestProcessor
         {
             ApplicationProperties = new ApplicationProperties
             {
-                ["status-code"] = 200,
-                ["status-description"] = "OK"
+                ["statusCode"] = 200,
+                ["statusDescription"] = "OK"
             },
             Properties = new Properties
             {

@@ -128,6 +128,14 @@ public class EmulatorContainer : IContainer
                 address = t.Address;
         }
 
+        // Diagnostic logging for link attachment
+        var sourceAddr = (attach.Source as Source)?.Address ?? "(null)";
+        var targetAddr = (attach.Target as Target)?.Address ?? "(null)";
+        var isDynamic = (attach.Source as Source)?.Dynamic ?? false;
+        Log.LogInformation(
+            "AttachLink: Role={Role}, ResolvedAddress={Address}, Source.Address={SourceAddr}, Target.Address={TargetAddr}, Dynamic={Dynamic}, LinkName={LinkName}",
+            attach.Role, address ?? "(null)", sourceAddr, targetAddr, isDynamic, attach.LinkName);
+
         // Check if a request processor is registered for this address.
         if (address != null)
         {
@@ -158,6 +166,41 @@ public class EmulatorContainer : IContainer
             if (entry != null)
             {
                 AttachRequestProcessorLink(entry, listenerLink, address, attach);
+                return true;
+            }
+        }
+
+        // For response links (Role=false / server is sender), the Target.Address is the client's
+        // dynamic reply-to address (e.g. "client$abc123"), not the management address.
+        // Check Source.Address to find the management entry this response link belongs to.
+        // The SDK attaches response links with Source.Address = "myqueue/$management".
+        if (!attach.Role && attach.Source is Source responseSource && responseSource.Address != null)
+        {
+            var sourceAddress = responseSource.Address;
+            RequestProcessorEntry? entry;
+            lock (_requestProcessors)
+            {
+                _requestProcessors.TryGetValue(sourceAddress, out entry);
+
+                if (entry is null && sourceAddress.EndsWith("/$management", StringComparison.OrdinalIgnoreCase))
+                {
+                    var entityName = sourceAddress[..^"/$management".Length].TrimStart('/');
+                    var entityEntry = TryCreateEntityManagementEntry(entityName);
+                    if (entityEntry is not null)
+                    {
+                        _requestProcessors[sourceAddress] = entityEntry;
+                        entry = entityEntry;
+                    }
+                    else
+                    {
+                        _requestProcessors.TryGetValue("$management", out entry);
+                    }
+                }
+            }
+
+            if (entry != null)
+            {
+                AttachRequestProcessorLink(entry, listenerLink, sourceAddress, attach);
                 return true;
             }
         }
@@ -234,7 +277,7 @@ public class EmulatorContainer : IContainer
             SettleOnSendProperty?.SetValue(link, true);
             link.InitializeSender(
                 onCredit: (c, p, s) => { },
-                onDispose: null,
+                onDispose: (msg, state, settled, s) => { },
                 state: Tuple.Create(entry, replyTo));
 
             link.Closed += (sender, error) =>
@@ -301,7 +344,16 @@ public class EmulatorContainer : IContainer
             lock (entry.ResponseLinks)
             {
                 entry.ResponseLinks.TryGetValue(message.Properties.ReplyTo, out responseLink);
+                Log.LogInformation(
+                    "DispatchRequest: ReplyTo={ReplyTo}, ResponseLinkKeys=[{Keys}], Found={Found}",
+                    message.Properties.ReplyTo,
+                    string.Join(", ", entry.ResponseLinks.Keys),
+                    responseLink != null);
             }
+        }
+        else
+        {
+            Log.LogWarning("DispatchRequest: message.Properties.ReplyTo is null");
         }
 
         if (responseLink == null)
@@ -339,7 +391,10 @@ public class EmulatorContainer : IContainer
     private RequestProcessorEntry? TryCreateEntityManagementEntry(string entityName)
     {
         if (_registry is null)
+        {
+            Log.LogWarning("TryCreateEntityManagementEntry: registry is null for entity '{EntityName}'", entityName);
             return null;
+        }
 
         // Resolve the namespace context — try all namespaces to find the queue
         NamespaceContext? context = null;
@@ -357,10 +412,13 @@ public class EmulatorContainer : IContainer
             queue = context.ResolveQueue(entityName);
         if (queue is not null)
         {
+            Log.LogInformation("TryCreateEntityManagementEntry: Created entry for entity '{EntityName}', HasSessions={HasSessions}",
+                entityName, queue.Sessions is not null);
             var processor = new ManagementLinkEndpoint(context, _scheduledProcessor, scopedQueue: queue);
             return new RequestProcessorEntry(processor);
         }
 
+        Log.LogWarning("TryCreateEntityManagementEntry: Queue not found for entity '{EntityName}'", entityName);
         return null;
     }
 

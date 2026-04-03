@@ -1157,4 +1157,51 @@ public abstract class ConformanceTestBase : IAsyncLifetime
         await receiverA.CompleteMessageAsync(msgA2);
         await receiverB.CompleteMessageAsync(msgB1);
     }
+
+    // ══════════════════════════════════════════════════════════════════════════
+    // Test: Session state — set and get
+    // ══════════════════════════════════════════════════════════════════════════
+
+    [Fact]
+    public async Task Session_SetAndGetSessionState()
+    {
+        ThrowIfSkipped();
+
+        var queue = await CreateTestQueueAsync(new CreateQueueOptions($"ct-{_uniqueId}-sessstate")
+        {
+            RequiresSession = true,
+            LockDuration = TimeSpan.FromMinutes(1)
+        });
+
+        await using var sender = Client.CreateSender(queue);
+        await sender.SendMessageAsync(new ServiceBusMessage("state-test")
+        {
+            SessionId = "state-session-1"
+        });
+
+        await using var receiver = await Client.AcceptSessionAsync(queue, "state-session-1");
+
+        // Initially session state should be empty
+        var initialState = await receiver.GetSessionStateAsync();
+        Assert.True(initialState is null || initialState.ToMemory().Length == 0);
+
+        // Set session state
+        var stateBytes = System.Text.Encoding.UTF8.GetBytes("hello-session-state");
+        await receiver.SetSessionStateAsync(new BinaryData(stateBytes));
+
+        // Get session state back
+        var retrieved = await receiver.GetSessionStateAsync();
+        Assert.NotNull(retrieved);
+        Assert.Equal("hello-session-state", System.Text.Encoding.UTF8.GetString(retrieved.ToMemory().Span));
+
+        // Clear session state
+        await receiver.SetSessionStateAsync(null);
+        var cleared = await receiver.GetSessionStateAsync();
+        Assert.True(cleared is null || cleared.ToMemory().Length == 0);
+
+        // Complete the message
+        var msg = await receiver.ReceiveMessageAsync(TimeSpan.FromSeconds(5));
+        Assert.NotNull(msg);
+        await receiver.CompleteMessageAsync(msg);
+    }
 }
