@@ -1,0 +1,141 @@
+name: CI
+
+on:
+  push:
+    branches: [main, develop, "copilot/**"]
+  pull_request:
+
+jobs:
+  # ── Internal test suite ─────────────────────────────────────────────────────
+  # Runs all tests that live inside this repository.  The emulator starts
+  # inside each test fixture on random ports, so no separate emulator process
+  # is required.  The dev cert MUST be trusted so that the Azure SDK can open
+  # AMQPS connections to localhost.
+  internal-tests:
+    name: Internal Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: false
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.x"
+
+      # Export the ASP.NET Core dev cert and add it to the system CA bundle so
+      # that the Azure SDK's AMQPS client accepts it without any client-side
+      # validation override.
+      - name: Trust HTTPS dev certificate
+        run: |
+          dotnet dev-certs https
+          dotnet dev-certs https -ep /tmp/devhttps.pfx -p ""
+          openssl pkcs12 -in /tmp/devhttps.pfx -nokeys -out /tmp/devhttps.crt -passin pass: 2>/dev/null \
+            || openssl pkcs12 -legacy -in /tmp/devhttps.pfx -nokeys -out /tmp/devhttps.crt -passin pass:
+          sudo cp /tmp/devhttps.crt /usr/local/share/ca-certificates/aspnetcore-dev.crt
+          sudo update-ca-certificates
+
+      - name: Restore & Build
+        run: dotnet build AzureServiceBusEmulator.sln
+
+      - name: Test
+        run: |
+          dotnet test AzureServiceBusEmulator.sln \
+            --no-build \
+            --filter "FullyQualifiedName!~RealAsbConformanceTests"
+
+  # ── Wolverine conformance ───────────────────────────────────────────────────
+  # Wolverine's own Azure Service Bus tests connect to the official emulator
+  # API on port 5673 (AMQP) and 5300 (HTTP management) using
+  # UseDevelopmentEmulator=true, which disables TLS.  We start AlmostServiceBus
+  # on port 5673 so it becomes a drop-in replacement.
+  wolverine-conformance:
+    name: Wolverine Conformance
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: false
+
+      - name: Checkout Wolverine submodule
+        run: git submodule update --init --depth 1 external/wolverine
+
+      - name: Setup .NET (9 for Wolverine tests, 10 for emulator host)
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: |
+            9.x
+            10.x
+
+      # The emulator host calls LoadDevCert() at startup, so the cert must
+      # exist in the CurrentUser/My store even though Wolverine tests bypass TLS.
+      - name: Generate HTTPS dev certificate
+        run: dotnet dev-certs https
+
+      - name: Build emulator host
+        run: dotnet build src/AzureServiceBusEmulator.Host
+
+      - name: Start emulator on port 5673
+        run: |
+          # Port 5673: AMQP (matches Wolverine's Servers.AzureServiceBusConnectionString)
+          # Port 5300: management HTTP (already bound by default in the host)
+          # Port 443:  may fail without root — the host already handles that gracefully
+          dotnet run --project src/AzureServiceBusEmulator.Host --no-build \
+            -- --Port 5673 --DashboardPort 0 &
+          echo "EMULATOR_PID=$!" >> "$GITHUB_ENV"
+          # Wait up to 30 seconds for the AMQP port to open
+          for i in $(seq 1 30); do
+            nc -z localhost 5673 2>/dev/null && echo "Emulator ready on port 5673" && break
+            sleep 1
+          done
+          nc -z localhost 5673 || (echo "ERROR: emulator did not start" && exit 1)
+
+      - name: Restore Wolverine Azure Service Bus tests
+        run: |
+          dotnet restore \
+            external/wolverine/src/Transports/Azure/Wolverine.AzureServiceBus.Tests/Wolverine.AzureServiceBus.Tests.csproj
+
+      - name: Build Wolverine Azure Service Bus tests
+        run: |
+          dotnet build \
+            external/wolverine/src/Transports/Azure/Wolverine.AzureServiceBus.Tests/Wolverine.AzureServiceBus.Tests.csproj \
+            --no-restore \
+            -f net9.0
+
+      - name: Run Wolverine Azure Service Bus tests
+        run: |
+          dotnet test \
+            external/wolverine/src/Transports/Azure/Wolverine.AzureServiceBus.Tests/Wolverine.AzureServiceBus.Tests.csproj \
+            --no-build \
+            -f net9.0
+
+      - name: Stop emulator
+        if: always()
+        run: kill "$EMULATOR_PID" 2>/dev/null || true
+
+  # ── NServiceBus tests ───────────────────────────────────────────────────────
+  # The NServiceBus.Transport.AzureServiceBus test suite is primarily unit
+  # tests that exercise the transport layer using fakes, so no running emulator
+  # is required.
+  nservicebus-tests:
+    name: NServiceBus Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: false
+
+      - name: Checkout NServiceBus submodule
+        run: git submodule update --init --depth 1 external/NServiceBus.Transport.AzureServiceBus
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.x"
+
+      - name: Build and test NServiceBus transport
+        run: |
+          dotnet test \
+            external/NServiceBus.Transport.AzureServiceBus/src/Tests \
+            --logger "console;verbosity=normal"
