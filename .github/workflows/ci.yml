@@ -14,6 +14,8 @@ jobs:
   internal-tests:
     name: Internal Tests
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@v4
         with:
@@ -48,11 +50,13 @@ jobs:
   # ── Wolverine conformance ───────────────────────────────────────────────────
   # Wolverine's own Azure Service Bus tests connect to the official emulator
   # API on port 5673 (AMQP) and 5300 (HTTP management) using
-  # UseDevelopmentEmulator=true, which disables TLS.  We start AlmostServiceBus
-  # on port 5673 so it becomes a drop-in replacement.
+  # UseDevelopmentEmulator=true, which disables TLS.  We start
+  # AzureServiceBusEmulator on port 5673 so it becomes a drop-in replacement.
   wolverine-conformance:
     name: Wolverine Conformance
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@v4
         with:
@@ -121,6 +125,8 @@ jobs:
   nservicebus-tests:
     name: NServiceBus Tests
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@v4
         with:
