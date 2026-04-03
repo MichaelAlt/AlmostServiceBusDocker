@@ -341,9 +341,20 @@ public class EmulatorContainer : IContainer
         if (_registry is null)
             return null;
 
-        // Resolve the namespace context — use "default" since CBS auth may have resolved it
-        var context = _registry.GetOrCreate("default");
-        var queue = context.ResolveQueue(entityName);
+        // Resolve the namespace context — try all namespaces to find the queue
+        NamespaceContext? context = null;
+        QueueEntity? queue = null;
+        foreach (var nsName in _registry.ListNamespaces())
+        {
+            var ns = _registry.Get(nsName);
+            if (ns is null) continue;
+            queue = ns.ResolveQueue(entityName);
+            if (queue is not null) { context = ns; break; }
+        }
+        if (context is null)
+            context = _registry.GetOrCreate("default");
+        if (queue is null)
+            queue = context.ResolveQueue(entityName);
         if (queue is not null)
         {
             var processor = new ManagementLinkEndpoint(context, _scheduledProcessor, scopedQueue: queue);
