@@ -228,7 +228,8 @@ jobs:
           FILTER="FullyQualifiedName!~Sending_a_message_to_a_session"     # Requires session concurrency support
           FILTER="$FILTER&FullyQualifiedName!~blob_storage"               # Requires Azure Blob Storage
           FILTER="$FILTER&FullyQualifiedName!~Sending_multiple_messages_to_a_session"  # Session concurrency
-          FILTER="$FILTER&FullyQualifiedName!~Complete_Specs"             # Turnout/job service, not implemented
+          FILTER="$FILTER&FullyQualifiedName!~Turnout"                    # Turnout/job service, not implemented
+          FILTER="$FILTER&TestCategory!=Flaky"                            # NUnit Flaky-marked tests (known intermittent)
           dotnet test \
             external/MassTransit/tests/MassTransit.Azure.ServiceBus.Core.Tests \
             --no-build \

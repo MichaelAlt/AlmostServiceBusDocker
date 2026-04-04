@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Reflection;
 using System.Security.Cryptography.X509Certificates;
 using global::Amqp;
@@ -27,6 +28,11 @@ public class EmulatorContainer : IContainer
     private ILinkProcessor? _linkProcessor;
     private NamespaceRegistry? _registry;
     private ScheduledMessageProcessor? _scheduledProcessor;
+
+    // Tracks sender link names → entity paths so that com.microsoft:schedule-message
+    // can resolve the target entity from the "associated-link-name" (which is typically
+    // the AMQP sender link name, not the entity path).
+    private readonly ConcurrentDictionary<string, string> _senderLinkNames = new(StringComparer.OrdinalIgnoreCase);
 
     // Reflection accessor for AttachContext's internal constructor.
     // AttachContext(ListenerLink link, Attach attach) is internal in AMQPNetLite,
@@ -62,6 +68,15 @@ public class EmulatorContainer : IContainer
     {
         _registry = registry;
         _scheduledProcessor = scheduledProcessor;
+    }
+
+    /// <summary>
+    /// Creates a <see cref="ManagementLinkEndpoint"/> that has access to the sender link name registry,
+    /// allowing it to resolve entity paths from AMQP link names in schedule-message requests.
+    /// </summary>
+    public ManagementLinkEndpoint CreateManagementEndpoint(NamespaceContext context, ScheduledMessageProcessor? scheduledProcessor = null, QueueEntity? scopedQueue = null)
+    {
+        return new ManagementLinkEndpoint(context, scheduledProcessor, scopedQueue: scopedQueue, senderLinkNames: _senderLinkNames);
     }
 
     /// <summary>
@@ -206,6 +221,13 @@ public class EmulatorContainer : IContainer
         }
 
         // Fall back to the link processor for all other links.
+        // Track sender link names → entity paths so that schedule-message can resolve
+        // the target entity from "associated-link-name" (which is the sender link name).
+        if (!attach.Role && address != null && !address.Contains("$management", StringComparison.OrdinalIgnoreCase))
+        {
+            _senderLinkNames[attach.LinkName] = address;
+        }
+
         if (_linkProcessor != null)
         {
             var attachContext = CreateAttachContext(listenerLink, attach);
@@ -414,7 +436,7 @@ public class EmulatorContainer : IContainer
         {
             Log.LogInformation("TryCreateEntityManagementEntry: Created entry for entity '{EntityName}', HasSessions={HasSessions}",
                 entityName, queue.Sessions is not null);
-            var processor = new ManagementLinkEndpoint(context, _scheduledProcessor, scopedQueue: queue);
+            var processor = new ManagementLinkEndpoint(context, _scheduledProcessor, scopedQueue: queue, senderLinkNames: _senderLinkNames);
             return new RequestProcessorEntry(processor);
         }
 
