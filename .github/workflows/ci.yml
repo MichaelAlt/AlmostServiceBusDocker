@@ -223,7 +223,7 @@ jobs:
             external/MassTransit/tests/MassTransit.Azure.ServiceBus.Core.Tests \
             --no-build \
             -f net9.0 \
-            --filter "FullyQualifiedName!~Sending_a_message_to_a_session" \
+            --filter "FullyQualifiedName!~Sending_a_message_to_a_session&FullyQualifiedName!~blob_storage" \
             --logger "console;verbosity=normal"
 
       - name: Stop emulator

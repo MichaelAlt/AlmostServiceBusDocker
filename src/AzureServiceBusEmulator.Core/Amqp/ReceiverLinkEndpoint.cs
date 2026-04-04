@@ -216,6 +216,9 @@ public class ReceiverLinkEndpoint : LinkEndpoint
             }
         };
 
+        if (brokered.PartitionKey is not null)
+            message.MessageAnnotations[new Symbol("x-opt-partition-key")] = brokered.PartitionKey;
+
         if (brokered.ApplicationProperties.Count > 0
             || brokered.DeadLetterReason is not null
             || brokered.DeadLetterErrorDescription is not null)
