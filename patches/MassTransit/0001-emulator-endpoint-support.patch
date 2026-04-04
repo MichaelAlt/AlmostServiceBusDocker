@@ -1,5 +1,5 @@
 diff --git a/src/Transports/MassTransit.Azure.ServiceBus.Core/AzureServiceBusTransport/ConnectionContextFactory.cs b/src/Transports/MassTransit.Azure.ServiceBus.Core/AzureServiceBusTransport/ConnectionContextFactory.cs
-index d618e98..576e22c 100644
+index d618e98..0970a37 100644
 --- a/src/Transports/MassTransit.Azure.ServiceBus.Core/AzureServiceBusTransport/ConnectionContextFactory.cs
 +++ b/src/Transports/MassTransit.Azure.ServiceBus.Core/AzureServiceBusTransport/ConnectionContextFactory.cs
 @@ -1,9 +1,12 @@
@@ -35,7 +35,7 @@ index d618e98..576e22c 100644
              };
  
              if (settings.TokenCredential != null)
-@@ -118,5 +123,33 @@ static bool HasSharedAccess(string connectionString)
+@@ -118,5 +123,40 @@ static bool HasSharedAccess(string connectionString)
              return !string.IsNullOrEmpty(connectionStringProperties.SharedAccessKeyName)
                  && !string.IsNullOrEmpty(connectionStringProperties.SharedAccessKey) || !string.IsNullOrEmpty(connectionStringProperties.SharedAccessSignature);
          }
@@ -45,8 +45,9 @@ index d618e98..576e22c 100644
 +        /// emulator), the Azure SDK's ServiceBusAdministrationClient strips the port from
 +        /// FullyQualifiedNamespace and always connects to HTTPS port 443.  Install a custom
 +        /// SocketsHttpHandler that redirects TCP connections to the correct port so that
-+        /// management API calls reach the emulator.  Returns the shared default transport
-+        /// when no custom port is needed.
++        /// management API calls reach the emulator.  TLS certificate validation is bypassed
++        /// so the emulator's self-signed development certificate is always accepted.
++        /// Returns the shared default transport when no custom port is needed.
 +        /// </summary>
 +        static HttpPipelineTransport BuildManagementTransport(Uri hostUri)
 +        {
@@ -57,11 +58,17 @@ index d618e98..576e22c 100644
 +
 +            var handler = new System.Net.Http.SocketsHttpHandler
 +            {
++                // Redirect every TCP connection to the emulator port.
 +                ConnectCallback = async (ctx, ct) =>
 +                {
 +                    var socket = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
 +                    await socket.ConnectAsync(new IPEndPoint(IPAddress.Loopback, targetPort), ct).ConfigureAwait(false);
 +                    return new NetworkStream(socket, ownsSocket: true);
++                },
++                // Accept the emulator's self-signed development certificate without validation.
++                SslOptions = new System.Net.Security.SslClientAuthenticationOptions
++                {
++                    RemoteCertificateValidationCallback = (_, _, _, _) => true,
 +                },
 +            };
 +
@@ -107,7 +114,7 @@ index 2584e0d..83451a3 100644
          }
  
 diff --git a/src/Transports/MassTransit.Azure.ServiceBus.Core/Testing/AzureServiceBusTestHarness.cs b/src/Transports/MassTransit.Azure.ServiceBus.Core/Testing/AzureServiceBusTestHarness.cs
-index 9e1a099..17d4a36 100644
+index 9e1a099..12fc333 100644
 --- a/src/Transports/MassTransit.Azure.ServiceBus.Core/Testing/AzureServiceBusTestHarness.cs
 +++ b/src/Transports/MassTransit.Azure.ServiceBus.Core/Testing/AzureServiceBusTestHarness.cs
 @@ -3,8 +3,11 @@
@@ -122,7 +129,7 @@ index 9e1a099..17d4a36 100644
      using Azure.Messaging.ServiceBus.Administration;
      using Internals;
  
-@@ -78,9 +81,43 @@ public override async Task Clean()
+@@ -78,9 +81,50 @@ public override async Task Clean()
  
          ServiceBusAdministrationClient CreateManagementClient()
          {
@@ -145,7 +152,8 @@ index 9e1a099..17d4a36 100644
 +        /// <summary>
 +        /// When hostUri contains a non-default port, returns a transport that redirects
 +        /// every TCP connection to that port so management HTTPS calls reach an emulator
-+        /// instead of the default port 443.
++        /// instead of the default port 443.  TLS certificate validation is bypassed so
++        /// the emulator's self-signed development certificate is always accepted.
 +        /// </summary>
 +        static HttpPipelineTransport BuildManagementTransport(Uri hostUri)
 +        {
@@ -156,11 +164,17 @@ index 9e1a099..17d4a36 100644
 +
 +            var handler = new System.Net.Http.SocketsHttpHandler
 +            {
++                // Redirect every TCP connection to the emulator port.
 +                ConnectCallback = async (ctx, ct) =>
 +                {
 +                    var socket = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
 +                    await socket.ConnectAsync(new IPEndPoint(IPAddress.Loopback, targetPort), ct).ConfigureAwait(false);
 +                    return new NetworkStream(socket, ownsSocket: true);
++                },
++                // Accept the emulator's self-signed development certificate without validation.
++                SslOptions = new System.Net.Security.SslClientAuthenticationOptions
++                {
++                    RemoteCertificateValidationCallback = (_, _, _, _) => true,
 +                },
 +            };
 +
