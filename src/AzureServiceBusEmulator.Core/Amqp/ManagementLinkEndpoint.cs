@@ -111,8 +111,8 @@ public class ManagementLinkEndpoint : IRequestProcessor
                         string? address = null;
                         if (!string.IsNullOrEmpty(candidateAddress))
                         {
-                            var (testQ, testT) = _context.ResolveSendTarget(candidateAddress);
-                            if (testQ is not null || testT is not null)
+                            var (resolvedQueue, resolvedTopic) = _context.ResolveSendTarget(candidateAddress);
+                            if (resolvedQueue is not null || resolvedTopic is not null)
                                 address = candidateAddress;
                         }
 

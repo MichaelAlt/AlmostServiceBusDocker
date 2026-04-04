@@ -109,15 +109,16 @@ jobs:
 
       - name: Run Wolverine Azure Service Bus tests
         run: |
+          FILTER="FullyQualifiedName!~leader_election"             # Requires PostgreSQL
+          FILTER="$FILTER&FullyQualifiedName!~Bug_1684_separated_handlers_and_conventional_routing"  # Flaky test
+          FILTER="$FILTER&FullyQualifiedName!~Bug_1933_multi_tenant_conventional_routing"             # Requires second emulator on port 5674
+          FILTER="$FILTER&FullyQualifiedName!~Bug_2283_purge_session_subscription"                   # Flaky test
+          FILTER="$FILTER&FullyQualifiedName!~StatefulResourceSmokeTests.check_negative"             # Flaky: AutoProvision in helper always creates resources
           dotnet test \
             external/wolverine/src/Transports/Azure/Wolverine.AzureServiceBus.Tests/Wolverine.AzureServiceBus.Tests.csproj \
             --no-build \
             -f net9.0 \
-            --filter "FullyQualifiedName!~leader_election\
-              &FullyQualifiedName!~Bug_1684_separated_handlers_and_conventional_routing\
-              &FullyQualifiedName!~Bug_1933_multi_tenant_conventional_routing\
-              &FullyQualifiedName!~Bug_2283_purge_session_subscription\
-              &FullyQualifiedName!~StatefulResourceSmokeTests.check_negative"
+            --filter "$FILTER"
 
       - name: Stop emulator
         if: always()
@@ -224,15 +225,17 @@ jobs:
           MT_ASB_KEYNAME: RootManageSharedAccessKey
           MT_ASB_KEYVALUE: emulator
         run: |
+          FILTER="FullyQualifiedName!~Sending_a_message_to_a_session"     # Requires session concurrency support
+          FILTER="$FILTER&FullyQualifiedName!~blob_storage"               # Requires Azure Blob Storage
+          FILTER="$FILTER&FullyQualifiedName!~Sending_multiple_messages_to_a_session"  # Session concurrency
+          FILTER="$FILTER&FullyQualifiedName!~Complete_Specs"             # Turnout/job service, not implemented
           dotnet test \
             external/MassTransit/tests/MassTransit.Azure.ServiceBus.Core.Tests \
             --no-build \
             -f net9.0 \
-            --filter "FullyQualifiedName!~Sending_a_message_to_a_session\
-              &FullyQualifiedName!~blob_storage\
-              &FullyQualifiedName!~Sending_multiple_messages_to_a_session\
-              &FullyQualifiedName!~Complete_Specs" \
+            --filter "$FILTER" \
             --logger "console;verbosity=normal"
+
 
       - name: Stop emulator
         if: always()
