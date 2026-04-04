@@ -103,12 +103,20 @@ public class ManagementLinkEndpoint : IRequestProcessor
                             brokered.MessageId = messageId;
 
                         // Resolve the entity to schedule on.
-                        // Prefer the associated-link-name from the request; fall back to the
-                        // scoped queue for entity-level management links where the sender
-                        // may not include the link name.
-                        var address = !string.IsNullOrEmpty(entityName)
-                            ? entityName!.TrimStart('/')
-                            : _scopedQueue?.Name;
+                        // The associated-link-name is typically a GUID sender link name (e.g.,
+                        // "sender-abc123"), NOT the entity path. Attempt to resolve it as an
+                        // entity path first; if that fails, fall back to the scoped queue on
+                        // entity-level management links, or treat it as a bare address.
+                        var candidateAddress = entityName?.TrimStart('/');
+                        string? address = null;
+                        if (!string.IsNullOrEmpty(candidateAddress))
+                        {
+                            var (testQ, testT) = _context.ResolveSendTarget(candidateAddress);
+                            if (testQ is not null || testT is not null)
+                                address = candidateAddress;
+                        }
+
+                        address ??= _scopedQueue?.Name;
 
                         if (string.IsNullOrEmpty(address))
                         {

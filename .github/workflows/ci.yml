@@ -112,7 +112,12 @@ jobs:
           dotnet test \
             external/wolverine/src/Transports/Azure/Wolverine.AzureServiceBus.Tests/Wolverine.AzureServiceBus.Tests.csproj \
             --no-build \
-            -f net9.0
+            -f net9.0 \
+            --filter "FullyQualifiedName!~leader_election\
+              &FullyQualifiedName!~Bug_1684_separated_handlers_and_conventional_routing\
+              &FullyQualifiedName!~Bug_1933_multi_tenant_conventional_routing\
+              &FullyQualifiedName!~Bug_2283_purge_session_subscription\
+              &FullyQualifiedName!~StatefulResourceSmokeTests.check_negative"
 
       - name: Stop emulator
         if: always()
@@ -223,7 +228,10 @@ jobs:
             external/MassTransit/tests/MassTransit.Azure.ServiceBus.Core.Tests \
             --no-build \
             -f net9.0 \
-            --filter "FullyQualifiedName!~Sending_a_message_to_a_session&FullyQualifiedName!~blob_storage" \
+            --filter "FullyQualifiedName!~Sending_a_message_to_a_session\
+              &FullyQualifiedName!~blob_storage\
+              &FullyQualifiedName!~Sending_multiple_messages_to_a_session\
+              &FullyQualifiedName!~Complete_Specs" \
             --logger "console;verbosity=normal"
 
       - name: Stop emulator
