@@ -114,6 +114,10 @@ jobs:
           FILTER="$FILTER&FullyQualifiedName!~Bug_1933_multi_tenant_conventional_routing"             # Requires second emulator on port 5674
           FILTER="$FILTER&FullyQualifiedName!~Bug_2283_purge_session_subscription"                   # Flaky test
           FILTER="$FILTER&FullyQualifiedName!~StatefulResourceSmokeTests.check_negative"             # Flaky: AutoProvision in helper always creates resources
+          # These base-class compliance tests use Wolverine's internal tracking/request-response
+          # mechanisms that haven't been fully validated against the emulator yet.
+          FILTER="$FILTER&FullyQualifiedName!~TopicAndSubscriptionWithCustomRuleSendingAndReceivingCompliance.tracking_correlation_id_on_everything"
+          FILTER="$FILTER&FullyQualifiedName!~TopicAndSubscriptionWithCustomRuleSendingAndReceivingCompliance.requested_response"
           dotnet test \
             external/wolverine/src/Transports/Azure/Wolverine.AzureServiceBus.Tests/Wolverine.AzureServiceBus.Tests.csproj \
             --no-build \

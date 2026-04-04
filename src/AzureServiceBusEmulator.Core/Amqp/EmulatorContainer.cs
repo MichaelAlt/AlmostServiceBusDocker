@@ -31,7 +31,8 @@ public class EmulatorContainer : IContainer
 
     // Tracks sender link names → entity paths so that com.microsoft:schedule-message
     // can resolve the target entity from the "associated-link-name" (which is typically
-    // the AMQP sender link name, not the entity path).
+    // the AMQP sender link name, not the entity path). Link names use case-insensitive
+    // comparison because the Azure SDK may vary casing across SDK versions.
     private readonly ConcurrentDictionary<string, string> _senderLinkNames = new(StringComparer.OrdinalIgnoreCase);
 
     // Reflection accessor for AttachContext's internal constructor.
@@ -223,7 +224,11 @@ public class EmulatorContainer : IContainer
         // Fall back to the link processor for all other links.
         // Track sender link names → entity paths so that schedule-message can resolve
         // the target entity from "associated-link-name" (which is the sender link name).
-        if (!attach.Role && address != null && !address.Contains("$management", StringComparison.OrdinalIgnoreCase))
+        // Only track non-management sender links (role=false = remote is sender, server receives).
+        if (!attach.Role && address != null
+            && !address.EndsWith("/$management", StringComparison.OrdinalIgnoreCase)
+            && !address.Equals("$management", StringComparison.OrdinalIgnoreCase)
+            && !address.Equals("$cbs", StringComparison.OrdinalIgnoreCase))
         {
             _senderLinkNames[attach.LinkName] = address;
         }

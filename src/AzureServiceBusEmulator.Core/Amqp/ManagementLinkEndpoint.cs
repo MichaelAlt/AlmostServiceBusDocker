@@ -121,13 +121,12 @@ public class ManagementLinkEndpoint : IRequestProcessor
                         }
 
                         // If not resolved as an entity path, try the sender link name registry.
-                        if (address is null && !string.IsNullOrEmpty(entityName) && _senderLinkNames is not null)
+                        if (address is null
+                            && !string.IsNullOrEmpty(entityName)
+                            && _senderLinkNames?.TryGetValue(entityName, out var registeredPath) == true)
                         {
-                            if (_senderLinkNames.TryGetValue(entityName, out var registeredPath))
-                            {
-                                Log.LogDebug("schedule-message: resolved link name '{LinkName}' → entity '{Entity}'", entityName, registeredPath);
-                                address = registeredPath;
-                            }
+                            Log.LogDebug("schedule-message: resolved link name '{LinkName}' → entity '{Entity}'", entityName, registeredPath);
+                            address = registeredPath;
                         }
 
                         address ??= _scopedQueue?.Name;
