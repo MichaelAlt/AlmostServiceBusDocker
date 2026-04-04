@@ -99,8 +99,13 @@ public class ManagementLinkEndpoint : IRequestProcessor
                         if (messageId is not null)
                             brokered.MessageId = messageId;
 
-                        // Resolve the entity to schedule on
-                        var address = entityName?.TrimStart('/') ?? string.Empty;
+                        // Resolve the entity to schedule on.
+                        // Prefer the associated-link-name from the request; fall back to the
+                        // scoped queue for entity-level management links where the sender
+                        // may not include the link name.
+                        var address = !string.IsNullOrEmpty(entityName)
+                            ? entityName!.TrimStart('/')
+                            : _scopedQueue?.Name ?? string.Empty;
                         var seqNo = _scheduledProcessor.Schedule(address, brokered);
                         sequenceNumbers.Add(seqNo);
                     }
