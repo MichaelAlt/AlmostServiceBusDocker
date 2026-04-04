@@ -92,12 +92,12 @@ public class ServiceBusLinkProcessor : ILinkProcessor
             // both AcceptSessionAsync (value = specific session ID) and AcceptNextSessionAsync
             // (value = null or empty string, meaning "accept any available session").
             // AMQPNetLite may deserialize the AMQP null value as either C# null or empty string.
+            var sessionFilterKey = new Symbol("com.microsoft:session-filter");
+            string? requestedSessionId = null;
+            bool hasSessionFilter = false;
+
             if (attachContext.Attach.Source is Source src && src.FilterSet is Map filterMap)
             {
-                var sessionFilterKey = new Symbol("com.microsoft:session-filter");
-                string? requestedSessionId = null;
-                bool hasSessionFilter = false;
-
                 if (filterMap.ContainsKey(sessionFilterKey))
                 {
                     var raw = filterMap[sessionFilterKey];
@@ -126,12 +126,12 @@ public class ServiceBusLinkProcessor : ILinkProcessor
                         }
                     }
                 }
+            }
 
-                if (hasSessionFilter)
-                {
-                    HandleSessionReceiver(attachContext, context, address, requestedSessionId);
-                    return;
-                }
+            if (hasSessionFilter)
+            {
+                HandleSessionReceiver(attachContext, context, address, requestedSessionId);
+                return;
             }
 
             // Client is receiving messages from us -- resolve queue
@@ -214,7 +214,10 @@ public class ServiceBusLinkProcessor : ILinkProcessor
 
     private static void CompleteSessionAttach(AttachContext attachContext, QueueEntity queue, BrokerSessionState session)
     {
-        attachContext.Attach.Properties ??= new Fields();
+        // Create a fresh Properties map — do NOT inherit the client's Attach properties
+        // (e.g. com.microsoft:timeout), which would confuse the SDK into thinking the
+        // response is a timeout notification rather than a successful session accept.
+        attachContext.Attach.Properties = new Fields();
         attachContext.Attach.Properties[new Symbol("com.microsoft:locked-until-utc")] = session.LockedUntil.UtcDateTime;
         attachContext.Attach.Properties[new Symbol("com.microsoft:session-id")] = session.SessionId;
 
