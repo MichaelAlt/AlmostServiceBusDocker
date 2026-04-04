@@ -3,6 +3,7 @@ using global::Amqp.Framing;
 using global::Amqp.Listener;
 using global::Amqp.Types;
 using AzureServiceBusEmulator.Core.Broker;
+using Microsoft.Extensions.Logging;
 
 namespace AzureServiceBusEmulator.Core.Amqp;
 
@@ -12,6 +13,8 @@ namespace AzureServiceBusEmulator.Core.Amqp;
 public class ManagementLinkEndpoint : IRequestProcessor
 {
     public int Credit => 100;
+
+    private static readonly ILogger Log = AmqpLog.CreateLogger<ManagementLinkEndpoint>();
 
     private readonly NamespaceContext _context;
     private readonly ScheduledMessageProcessor? _scheduledProcessor;
@@ -105,7 +108,14 @@ public class ManagementLinkEndpoint : IRequestProcessor
                         // may not include the link name.
                         var address = !string.IsNullOrEmpty(entityName)
                             ? entityName!.TrimStart('/')
-                            : _scopedQueue?.Name ?? string.Empty;
+                            : _scopedQueue?.Name;
+
+                        if (string.IsNullOrEmpty(address))
+                        {
+                            Log.LogWarning("schedule-message: no entity address could be resolved (associated-link-name='{LinkName}', scopedQueue=null). Message dropped.", entityName);
+                            continue;
+                        }
+
                         var seqNo = _scheduledProcessor.Schedule(address, brokered);
                         sequenceNumbers.Add(seqNo);
                     }
