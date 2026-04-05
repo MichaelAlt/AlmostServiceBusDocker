@@ -78,8 +78,14 @@ public class SessionReceiverLinkEndpoint : LinkEndpoint
                 {
                     link.SendMessage(amqpMessage);
                 }
-                catch
+                catch (Exception ex)
                 {
+                    // Send failed — link is closing/draining.
+                    // Abandon the message so it re-enters the queue for the next consumer.
+                    Log.LogDebug(ex, "Session PUMP SendMessage failed for session '{SessionId}', abandoning message {MessageId}",
+                        _session.SessionId, brokered.MessageId);
+                    if (brokered.LockToken is not null)
+                        _queue.Abandon(brokered.LockToken);
                     break;
                 }
             }

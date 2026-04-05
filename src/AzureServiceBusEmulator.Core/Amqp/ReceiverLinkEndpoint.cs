@@ -187,27 +187,44 @@ public class ReceiverLinkEndpoint : LinkEndpoint
     {
         var lockGuid = Guid.TryParse(brokered.LockToken, out var guid) ? guid : Guid.NewGuid();
 
+        var header = new Header
+        {
+            // AMQP Header.DeliveryCount is 0-based (number of prior unsuccessful
+            // delivery attempts). The Azure SDK adds 1 to get the 1-based
+            // DeliveryCount exposed on ServiceBusReceivedMessage.
+            DeliveryCount = (uint)Math.Max(0, brokered.DeliveryCount - 1)
+        };
+
+        // Preserve TTL on outgoing messages so the SDK can calculate expiry.
+        if (brokered.TimeToLive != TimeSpan.MaxValue && brokered.TimeToLive > TimeSpan.Zero)
+        {
+            header.Ttl = (uint)brokered.TimeToLive.TotalMilliseconds;
+        }
+
+        var properties = new Properties
+        {
+            MessageId = brokered.MessageId,
+            CorrelationId = brokered.CorrelationId,
+            ContentType = brokered.ContentType,
+            Subject = brokered.Subject,
+            ReplyTo = brokered.ReplyTo,
+            To = brokered.To,
+            GroupId = brokered.SessionId,
+            ReplyToGroupId = brokered.ReplyToSessionId,
+            CreationTime = brokered.EnqueuedTimeUtc.UtcDateTime
+        };
+
+        // Set AbsoluteExpiryTime so the Azure SDK can determine message expiry.
+        if (brokered.TimeToLive != TimeSpan.MaxValue && brokered.TimeToLive > TimeSpan.Zero)
+        {
+            properties.AbsoluteExpiryTime = brokered.EnqueuedTimeUtc.Add(brokered.TimeToLive).UtcDateTime;
+        }
+
         var message = new Message()
         {
             BodySection = new Data { Binary = brokered.Body ?? [] },
-            Properties = new Properties
-            {
-                MessageId = brokered.MessageId,
-                CorrelationId = brokered.CorrelationId,
-                ContentType = brokered.ContentType,
-                Subject = brokered.Subject,
-                ReplyTo = brokered.ReplyTo,
-                To = brokered.To,
-                GroupId = brokered.SessionId,
-                ReplyToGroupId = brokered.ReplyToSessionId
-            },
-            Header = new Header
-            {
-                // AMQP Header.DeliveryCount is 0-based (number of prior unsuccessful
-                // delivery attempts). The Azure SDK adds 1 to get the 1-based
-                // DeliveryCount exposed on ServiceBusReceivedMessage.
-                DeliveryCount = (uint)Math.Max(0, brokered.DeliveryCount - 1)
-            },
+            Properties = properties,
+            Header = header,
             MessageAnnotations = new MessageAnnotations
             {
                 [new Symbol("x-opt-sequence-number")] = brokered.SequenceNumber,
@@ -221,6 +238,9 @@ public class ReceiverLinkEndpoint : LinkEndpoint
 
         if (brokered.PartitionKey is not null)
             message.MessageAnnotations[new Symbol("x-opt-partition-key")] = brokered.PartitionKey;
+
+        if (brokered.DeadLetterSource is not null)
+            message.MessageAnnotations[new Symbol("x-opt-dead-letter-source")] = brokered.DeadLetterSource;
 
         if (brokered.ApplicationProperties.Count > 0
             || brokered.DeadLetterReason is not null
