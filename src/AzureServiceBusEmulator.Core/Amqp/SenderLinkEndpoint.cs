@@ -29,9 +29,31 @@ public class SenderLinkEndpoint : LinkEndpoint
     {
         try
         {
-            var brokeredMessage = ConvertToBrokeredMessage(messageContext.Message);
-            Log.LogDebug("RECV {MessageId} → '{Address}'", brokeredMessage.MessageId, _address);
-            RouteMessage(_address, brokeredMessage);
+            var rawMsg = messageContext.Message;
+
+            // Detect Azure SDK batch messages: when the Azure SDK sends messages via
+            // ServiceBusMessageBatch, it wraps them in a single AMQP transfer where the
+            // body contains Data[] sections, each being a complete AMQP-encoded message.
+            // The wrapper has minimal Properties (just MessageId) with no Subject.
+            if (rawMsg.Body is Data[] dataArray && dataArray.Length > 0
+                && rawMsg.Properties?.Subject is null)
+            {
+                Log.LogDebug("RECV BATCH ({Count} messages) → '{Address}'", dataArray.Length, _address);
+                foreach (var data in dataArray)
+                {
+                    var innerMsg = Message.Decode(new ByteBuffer(data.Binary, 0, data.Binary.Length, data.Binary.Length));
+                    var brokered = ConvertToBrokeredMessage(innerMsg);
+                    Log.LogDebug("RECV {MessageId} → '{Address}' (batch)", brokered.MessageId, _address);
+                    RouteMessage(_address, brokered);
+                }
+            }
+            else
+            {
+                var brokered = ConvertToBrokeredMessage(rawMsg);
+                Log.LogDebug("RECV {MessageId} → '{Address}'", brokered.MessageId, _address);
+                RouteMessage(_address, brokered);
+            }
+
             messageContext.Complete();
         }
         catch (Exception ex)
@@ -71,6 +93,33 @@ public class SenderLinkEndpoint : LinkEndpoint
         else if (amqpMessage.Body is Data data)
         {
             brokered.Body = data.Binary;
+        }
+        else if (amqpMessage.Body is Data[] dataArray)
+        {
+            // Multiple AMQP Data sections — concatenate into a single byte array.
+            // Microsoft.Azure.Amqp can send messages this way when the body is large
+            // or when the message is part of a batch.
+            var totalLen = 0;
+            foreach (var d in dataArray) totalLen += d.Binary.Length;
+            var combined = new byte[totalLen];
+            var offset = 0;
+            foreach (var d in dataArray)
+            {
+                Buffer.BlockCopy(d.Binary, 0, combined, offset, d.Binary.Length);
+                offset += d.Binary.Length;
+            }
+            brokered.Body = combined;
+        }
+        else if (amqpMessage.Body is AmqpValue amqpValue)
+        {
+            // AmqpValue body — serialize the value. The Azure SDK sometimes uses this
+            // encoding for string or simple value messages.
+            if (amqpValue.Value is byte[] valueBytes)
+                brokered.Body = valueBytes;
+            else if (amqpValue.Value is string valueStr)
+                brokered.Body = System.Text.Encoding.UTF8.GetBytes(valueStr);
+            else if (amqpValue.Value is not null)
+                brokered.Body = System.Text.Encoding.UTF8.GetBytes(amqpValue.Value.ToString()!);
         }
 
         // Extract standard properties
