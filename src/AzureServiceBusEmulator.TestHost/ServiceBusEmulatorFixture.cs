@@ -40,6 +40,8 @@ public class ServiceBusEmulatorFixture : IAsyncDisposable
 
     public async Task StartAsync()
     {
+        EnsureDevCertTrusted();
+
         PublicPort = GetFreePort();
         AmqpPort = GetFreePort();
         HttpPort = GetFreePort();
@@ -108,6 +110,31 @@ public class ServiceBusEmulatorFixture : IAsyncDisposable
                 "ASP.NET HTTPS development certificate not found. " +
                 "Run 'dotnet dev-certs https --trust' to generate and trust the certificate.");
         return new X509Certificate2(certs[0]);
+    }
+
+    /// <summary>
+    /// On Linux, the ASP.NET dev cert must be in SSL_CERT_DIR for the Azure SDK's
+    /// AMQP TLS client to trust it. dotnet dev-certs --trust places the cert in
+    /// ~/.aspnet/dev-certs/trust but doesn't update SSL_CERT_DIR automatically.
+    /// </summary>
+    private static void EnsureDevCertTrusted()
+    {
+        var trustDir = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
+            ".aspnet", "dev-certs", "trust");
+
+        if (!Directory.Exists(trustDir))
+            return;
+
+        var current = Environment.GetEnvironmentVariable("SSL_CERT_DIR") ?? "";
+        if (!current.Contains(trustDir))
+        {
+            var systemCerts = "/usr/lib/ssl/certs";
+            var newValue = string.IsNullOrEmpty(current)
+                ? $"{trustDir}:{systemCerts}"
+                : $"{trustDir}:{current}";
+            Environment.SetEnvironmentVariable("SSL_CERT_DIR", newValue);
+        }
     }
 
     private static int GetFreePort()
