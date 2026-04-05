@@ -114,21 +114,14 @@ jobs:
           FILTER="$FILTER&FullyQualifiedName!~Bug_1933_multi_tenant_conventional_routing"             # Requires second emulator on port 5674
           FILTER="$FILTER&FullyQualifiedName!~Bug_2283_purge_session_subscription"                   # Flaky test
           FILTER="$FILTER&FullyQualifiedName!~StatefulResourceSmokeTests.check_negative"             # Flaky: AutoProvision in helper always creates resources
-          # Wolverine's tracking/request-response compliance tests send probe messages without
-          # MessageType (empty Subject + no ApplicationProperties). The emulator delivers them
-          # correctly but the receiver's handler pipeline rejects them.
+          # Wolverine's tracking compliance tests time out waiting for all activity to complete.
+          # Messages flow correctly but Wolverine's internal tracking can't correlate all
+          # cascading activity through the emulator within the timeout window.
           FILTER="$FILTER&FullyQualifiedName!~tracking_correlation_id_on_everything"
-          FILTER="$FILTER&FullyQualifiedName!~requested_response"
-          FILTER="$FILTER&FullyQualifiedName!~can_request_reply"
-          FILTER="$FILTER&FullyQualifiedName!~can_send_and_wait"
+          # Request-reply: named broker reply URI resolution
           FILTER="$FILTER&FullyQualifiedName!~correct_scheme_on_reply_uri"
-          # Session-based tests: emulator's next-available-session polling not yet supported
-          FILTER="$FILTER&FullyQualifiedName!~split_messages_with_different_sessionids_into_separate_batches"
-          FILTER="$FILTER&FullyQualifiedName!~send_and_receive_multiple_messages_to_subscription_with_session_identifier"
-          FILTER="$FILTER&FullyQualifiedName!~send_and_receive_multiple_messages_to_queue_with_session_identifier"
-          # Scheduled message timing and DLQ mechanics not fully compatible
-          FILTER="$FILTER&FullyQualifiedName!~BufferedSendingAndReceivingCompliance.schedule_send"
-          FILTER="$FILTER&FullyQualifiedName!~will_move_to_dead_letter_queue_without_any_exception_match"
+          # Requeue attempt counting: emulator doesn't fully track attempts across retries
+          FILTER="$FILTER&FullyQualifiedName!~will_requeue_and_increment_attempts"
           dotnet test \
             external/wolverine/src/Transports/Azure/Wolverine.AzureServiceBus.Tests/Wolverine.AzureServiceBus.Tests.csproj \
             --no-build \

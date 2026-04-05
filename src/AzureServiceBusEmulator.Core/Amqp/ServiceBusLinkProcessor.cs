@@ -221,6 +221,15 @@ public class ServiceBusLinkProcessor : ILinkProcessor
         attachContext.Attach.Properties[new Symbol("com.microsoft:locked-until-utc")] = session.LockedUntil.UtcDateTime;
         attachContext.Attach.Properties[new Symbol("com.microsoft:session-id")] = session.SessionId;
 
+        // The Azure SDK also reads the resolved session ID from the Source filter-set
+        // in the attach response. Mirror the filter with the actual session ID so the
+        // SDK's AmqpSessionReceiver can populate its SessionId property.
+        if (attachContext.Attach.Source is Source src)
+        {
+            src.FilterSet ??= new Map();
+            src.FilterSet[new Symbol("com.microsoft:session-filter")] = session.SessionId;
+        }
+
         var endpoint = new SessionReceiverLinkEndpoint(queue, session);
         attachContext.Complete(endpoint, 0);
     }
