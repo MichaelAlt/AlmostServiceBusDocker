@@ -289,6 +289,7 @@ public sealed class QueueEntity
     {
         message.DeadLetterReason = reason;
         message.DeadLetterErrorDescription = description;
+        message.DeadLetterSource = Name;
         DeadLetterQueue.Enqueue(message);
     }
 

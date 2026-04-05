@@ -47,6 +47,8 @@ public sealed class BrokeredMessage
 
     public string? DeadLetterErrorDescription { get; set; }
 
+    public string? DeadLetterSource { get; set; }
+
     public DateTimeOffset EnqueuedTimeUtc { get; set; } = DateTimeOffset.UtcNow;
 
     public string? LockToken { get; set; }

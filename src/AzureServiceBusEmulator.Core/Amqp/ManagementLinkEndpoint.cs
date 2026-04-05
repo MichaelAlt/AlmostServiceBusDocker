@@ -304,7 +304,13 @@ public class ManagementLinkEndpoint : IRequestProcessor
         }
 
         var sessionManager = FindSessionManager();
-        var state = sessionManager?.GetSessionState(sessionId);
+        if (sessionManager is null)
+        {
+            SendErrorResponse(requestContext, 400, "Entity does not support sessions");
+            return;
+        }
+
+        var state = sessionManager.GetSessionState(sessionId);
 
         var responseBody = new Map
         {
@@ -352,7 +358,14 @@ public class ManagementLinkEndpoint : IRequestProcessor
             return;
         }
 
-        FindSessionManager()?.SetSessionState(sessionId, state);
+        var sessionManager = FindSessionManager();
+        if (sessionManager is null)
+        {
+            SendErrorResponse(requestContext, 400, "Entity does not support sessions");
+            return;
+        }
+
+        sessionManager.SetSessionState(sessionId, state);
 
         var response = new Message()
         {

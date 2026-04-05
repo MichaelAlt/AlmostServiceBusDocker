@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Linq;
 using System.Reflection;
 using System.Security.Cryptography.X509Certificates;
 using global::Amqp;
@@ -293,12 +294,17 @@ public class EmulatorContainer : IContainer
                 });
                 return;
             }
-            var replyTo = target.Address;
+            // The reply-to address identifies the response link for request correlation.
+            // Microsoft.Azure.Amqp sets Target.Address to a GUID used as ReplyTo in requests.
+            // Fall back to the link name if Target.Address is unexpectedly null.
+            var replyTo = target.Address ?? link.Name;
 
             lock (entry.ResponseLinks)
             {
                 entry.ResponseLinks[replyTo] = link;
             }
+
+            Log.LogInformation("AttachRequestProcessorLink: response link for '{Address}', replyTo='{ReplyTo}'", address, replyTo);
 
             // SettleOnSend has an internal setter — use reflection.
             SettleOnSendProperty?.SetValue(link, true);
@@ -385,7 +391,23 @@ public class EmulatorContainer : IContainer
 
         if (responseLink == null)
         {
+            // Fallback: if ReplyTo didn't match but there's exactly one response link,
+            // use it. This handles cases where the SDK's ReplyTo format doesn't match
+            // the Target.Address stored during link attachment.
+            lock (entry.ResponseLinks)
+            {
+                if (entry.ResponseLinks.Count == 1)
+                {
+                    responseLink = entry.ResponseLinks.Values.First();
+                    Log.LogInformation("DispatchRequest: using fallback response link (single available)");
+                }
+            }
+        }
+
+        if (responseLink == null)
+        {
             // No response link — reject the message.
+            Log.LogWarning("DispatchRequest: no response link found for ReplyTo={ReplyTo}", message.Properties?.ReplyTo);
             link.DisposeMessage(message, new Rejected
             {
                 Error = new Error(new Symbol("amqp:not-found"))
