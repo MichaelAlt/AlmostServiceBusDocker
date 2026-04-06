@@ -1,9 +1,16 @@
 # AlmostServiceBus
 
-A local Azure Service Bus emulator compatible with the official Azure SDK (`Azure.Messaging.ServiceBus`), MassTransit, Wolverine, and NServiceBus. Run your integration tests without an Azure subscription.
+A local Azure Service Bus emulator compatible with the official Azure SDK (`Azure.Messaging.ServiceBus`), MassTransit, Wolverine, and NServiceBus.
+
+Unlike Microsoft's official emulator (which requires Docker with a SQL Server container and supports only sequential testing), AlmostServiceBus is flexible about how you run it:
+
+- **Embedded in your test suite** — runs in-process with per-test namespace isolation, so your integration tests run in parallel without interfering with each other
+- **Standalone for local dev** — run as a long-lived process or via Aspire, and point your app at it just like the real thing
 
 ## Features
 
+- **No infrastructure dependencies** — no Docker, no SQL Server, no port conflicts
+- **Namespace isolation** — each test fixture gets a unique namespace via `SharedAccessKeyName`, enabling safe parallel execution
 - **Full AMQP 1.0 protocol** via AMQPNetLite — no HTTP polling or fakes
 - **Queues** with PeekLock, dead-lettering, duplicate detection, and max delivery count
 - **Topics & Subscriptions** with SQL and correlation filters, forwarding, fan-out
@@ -12,7 +19,6 @@ A local Azure Service Bus emulator compatible with the official Azure SDK (`Azur
 - **Batch message support** — correctly decodes Azure SDK `ServiceBusMessageBatch` transfers
 - **Management API** — Atom XML REST API for queue/topic/subscription CRUD
 - **TLS termination** — single port serves AMQPS, HTTPS, and plain AMQP/HTTP
-- **Namespace isolation** — use `SharedAccessKeyName` as namespace for test isolation
 - **Vue diagnostic dashboard** on port 15672
 
 ## Quick Start
