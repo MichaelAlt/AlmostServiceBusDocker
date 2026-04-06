@@ -1,4 +1,3 @@
-using System.Security.Cryptography.X509Certificates;
 using AzureServiceBusEmulator.Core.Amqp;
 using AzureServiceBusEmulator.Core.Broker;
 using AzureServiceBusEmulator.Core.Dashboard;
@@ -40,11 +39,11 @@ public class ServiceBusEmulatorFixture : IAsyncDisposable
 
     public async Task StartAsync()
     {
-        EnsureDevCertTrusted();
+        EmulatorInfrastructure.EnsureDevCertTrusted();
 
-        PublicPort = GetFreePort();
-        AmqpPort = GetFreePort();
-        HttpPort = GetFreePort();
+        PublicPort = EmulatorInfrastructure.GetFreePort();
+        AmqpPort = EmulatorInfrastructure.GetFreePort();
+        HttpPort = EmulatorInfrastructure.GetFreePort();
 
         // 1. Start Kestrel with plain HTTP on internal port
         var builder = WebApplication.CreateBuilder();
@@ -68,8 +67,8 @@ public class ServiceBusEmulatorFixture : IAsyncDisposable
         _amqpServer = new AmqpServer(new AmqpServerOptions { Port = AmqpPort }, _registry, _scheduledProcessor);
         _amqpServer.Start();
 
-        // 3. Start multiplexer on public port with TLS termination
-        var cert = LoadDevCert();
+        // 4. Start multiplexer on public port with TLS termination
+        var cert = EmulatorInfrastructure.LoadDevCert();
         _multiplexerCts = new CancellationTokenSource();
         _multiplexer = new TcpMultiplexer(PublicPort, AmqpPort, HttpPort, cert);
         _ = _multiplexer.StartAsync(_multiplexerCts.Token);
@@ -97,52 +96,4 @@ public class ServiceBusEmulatorFixture : IAsyncDisposable
     public NamespaceContext GetNamespaceContext() => _registry.GetOrCreate(_namespace);
 
     public NamespaceContext GetDefaultNamespaceContext() => _registry.GetOrCreate("default");
-
-    public static X509Certificate2 LoadDevCert()
-    {
-        using var store = new X509Store(StoreName.My, StoreLocation.CurrentUser);
-        store.Open(OpenFlags.ReadOnly);
-        // OID 1.3.6.1.4.1.311.84.1.1 identifies ASP.NET Core dev certs
-        var certs = store.Certificates.Find(
-            X509FindType.FindByExtension, "1.3.6.1.4.1.311.84.1.1", validOnly: false);
-        if (certs.Count == 0)
-            throw new InvalidOperationException(
-                "ASP.NET HTTPS development certificate not found. " +
-                "Run 'dotnet dev-certs https --trust' to generate and trust the certificate.");
-        return new X509Certificate2(certs[0]);
-    }
-
-    /// <summary>
-    /// On Linux, the ASP.NET dev cert must be in SSL_CERT_DIR for the Azure SDK's
-    /// AMQP TLS client to trust it. dotnet dev-certs --trust places the cert in
-    /// ~/.aspnet/dev-certs/trust but doesn't update SSL_CERT_DIR automatically.
-    /// </summary>
-    private static void EnsureDevCertTrusted()
-    {
-        var trustDir = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
-            ".aspnet", "dev-certs", "trust");
-
-        if (!Directory.Exists(trustDir))
-            return;
-
-        var current = Environment.GetEnvironmentVariable("SSL_CERT_DIR") ?? "";
-        if (!current.Contains(trustDir))
-        {
-            var systemCerts = "/usr/lib/ssl/certs";
-            var newValue = string.IsNullOrEmpty(current)
-                ? $"{trustDir}:{systemCerts}"
-                : $"{trustDir}:{current}";
-            Environment.SetEnvironmentVariable("SSL_CERT_DIR", newValue);
-        }
-    }
-
-    private static int GetFreePort()
-    {
-        var listener = new System.Net.Sockets.TcpListener(System.Net.IPAddress.Loopback, 0);
-        listener.Start();
-        var port = ((System.Net.IPEndPoint)listener.LocalEndpoint).Port;
-        listener.Stop();
-        return port;
-    }
 }

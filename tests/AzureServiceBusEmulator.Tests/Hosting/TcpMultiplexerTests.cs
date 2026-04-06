@@ -120,7 +120,7 @@ public class TcpMultiplexerTests : IAsyncDisposable
 
         try
         {
-            var cert = ServiceBusEmulatorFixture.LoadDevCert();
+            var cert = EmulatorInfrastructure.LoadDevCert();
             var multiplexer = new TcpMultiplexer(publicPort, amqpPort, httpPort, cert);
             _ = multiplexer.StartAsync(_cts.Token);
 

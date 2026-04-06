@@ -188,7 +188,7 @@ public class SenderLinkEndpoint : LinkEndpoint
     /// Routes a brokered message to the appropriate queue or topic.
     /// Exposed as public for testing.
     /// </summary>
-    public void RouteMessage(string address, BrokeredMessage message)
+    internal void RouteMessage(string address, BrokeredMessage message)
     {
         message.SequenceNumber = _context.NextSequenceNumber();
         message.EnqueuedTimeUtc = DateTimeOffset.UtcNow;
