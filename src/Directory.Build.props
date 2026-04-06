@@ -1,0 +1,18 @@
+<Project>
+  <Import Project="$([MSBuild]::GetPathOfFileAbove('Directory.Build.props', '$(MSBuildThisFileDirectory)../'))" />
+  <PropertyGroup>
+    <Authors>AlmostServiceBus Contributors</Authors>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageProjectUrl>https://github.com/gkinsman/AlmostServiceBus</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/gkinsman/AlmostServiceBus</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <Description>AlmostServiceBus — a local Service Bus emulator with in-process test isolation, compatible with the official Azure SDK, MassTransit, Wolverine, and NServiceBus.</Description>
+    <PackageTags>servicebus;emulator;testing;amqp;almostservicebus</PackageTags>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+  </PropertyGroup>
+
+  <!-- Include repo README in packages -->
+  <ItemGroup>
+    <None Include="$(MSBuildThisFileDirectory)../README.md" Pack="true" PackagePath="/" />
+  </ItemGroup>
+</Project>

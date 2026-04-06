@@ -1,0 +1,50 @@
+name: Release NuGet
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  release:
+    name: Pack & Publish
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # MinVer needs full history to derive version from tags
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.x"
+
+      - name: Restore
+        run: dotnet restore AzureServiceBusEmulator.sln
+
+      - name: Build
+        run: dotnet build AzureServiceBusEmulator.sln --configuration Release --no-restore
+
+      - name: Test
+        run: |
+          dotnet test AzureServiceBusEmulator.sln \
+            --configuration Release \
+            --no-build \
+            --filter "FullyQualifiedName!~RealAsbConformanceTests"
+
+      - name: Pack
+        run: |
+          dotnet pack src/AzureServiceBusEmulator.Core --configuration Release --no-build --output ./nupkgs
+          dotnet pack src/AzureServiceBusEmulator.TestHost --configuration Release --no-build --output ./nupkgs
+          dotnet pack src/AzureServiceBusEmulator.Aspire.Hosting --configuration Release --no-build --output ./nupkgs
+
+      - name: Push to NuGet.org
+        run: |
+          dotnet nuget push ./nupkgs/*.nupkg \
+            --api-key ${{ secrets.NUGET_API_KEY }} \
+            --source https://api.nuget.org/v3/index.json \
+            --skip-duplicate

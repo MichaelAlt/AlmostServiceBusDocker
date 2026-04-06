@@ -90,6 +90,36 @@ cd external/wolverine && dotnet test src/Transports/Azure/Wolverine.AzureService
 cd external/MassTransit && MT_ASB_EMULATOR=1 MT_ASB_KEYNAME=RootManageSharedAccessKey MT_ASB_KEYVALUE=emulator dotnet test tests/MassTransit.Azure.ServiceBus.Core.Tests --no-build
 ```
 
+## Versioning & Releasing
+
+Versioning is fully automatic via [MinVer](https://github.com/clcrutch/MinVer). No version numbers in csproj files.
+
+- MinVer reads the version from **git tags** (prefix `v`, e.g. `v0.1.0`)
+- On a tagged commit: version is exactly the tag (e.g. `0.1.0`)
+- After a tag: version auto-bumps patch with pre-release suffix (e.g. `0.1.1-alpha.0.3` = 3 commits after `v0.1.0`)
+- No tags at all: version is `0.1.0-alpha.0.N` (floor set by `MinVerMinimumMajorMinor` in `Directory.Build.props`)
+
+### How to release
+
+```bash
+git tag v0.1.0
+git push origin v0.1.0
+```
+
+The `.github/workflows/release.yml` workflow triggers on `v*` tags and:
+1. Builds in Release configuration
+2. Runs all tests
+3. Packs three NuGet packages: `AlmostServiceBus`, `AlmostServiceBus.TestHost`, `AlmostServiceBus.Aspire.Hosting`
+4. Pushes to NuGet.org (requires `NUGET_API_KEY` secret)
+
+### Version bumps
+
+- **Patch**: automatic (MinVer bumps patch between tags)
+- **Minor**: create tag `v0.2.0`
+- **Major**: create tag `v1.0.0`
+
+No csproj changes needed — just tag and push.
+
 ## Key Design Decisions
 
 1. **AMQPNetLite not Microsoft.Azure.Amqp** — Microsoft.Azure.Amqp's server-side API is internal/undocumented. AMQPNetLite works but needs workarounds (delivery tags, credit reflection).
