@@ -176,20 +176,20 @@ NamespaceRegistry (ConcurrentDictionary<string, NamespaceContext>)
 ### Project Structure
 
 ```
-AzureServiceBusEmulator/
+AlmostServiceBus/
 +-- src/
-|   +-- AzureServiceBusEmulator.Core/          # Class library
+|   +-- AlmostServiceBus.Core/          # Class library
 |   |   +-- Broker/                            # NamespaceRegistry, entities, message store
 |   |   +-- Amqp/                              # ContainerHost, LinkProcessor, CbsHandler
 |   |   +-- Management/                        # Atom XML serialization, REST route handlers
-|   +-- AzureServiceBusEmulator.Host/          # Console app / Generic Host
+|   +-- AlmostServiceBus.Host/          # Console app / Generic Host
 |   |   +-- Program.cs                         # Kestrel (REST) + AMQP listener startup
-|   +-- AzureServiceBusEmulator.TestHost/      # Test fixture library
+|   +-- AlmostServiceBus.TestHost/      # Test fixture library
 |       +-- ServiceBusEmulatorFixture.cs        # Starts both listeners, provides connection string
 +-- tests/
-|   +-- AzureServiceBusEmulator.Tests/         # Unit + integration tests
-|   +-- AzureServiceBusEmulator.MassTransit.Tests/  # MassTransit integration tests
-+-- AzureServiceBusEmulator.sln
+|   +-- AlmostServiceBus.Tests/         # Unit + integration tests
+|   +-- AlmostServiceBus.MassTransit.Tests/  # MassTransit integration tests
++-- AlmostServiceBus.sln
 ```
 
 ### Three Packages
@@ -274,7 +274,7 @@ The Atom XML serialization for the management API. The `ServiceBusAdministration
 
 ## Test Plan
 
-### 1. Unit Tests (`AzureServiceBusEmulator.Tests`)
+### 1. Unit Tests (`AlmostServiceBus.Tests`)
 
 Test the broker core in isolation:
 - Enqueue/dequeue on queues
@@ -305,7 +305,7 @@ Use the real `ServiceBusClient` and `ServiceBusAdministrationClient` against the
 - Schedule a message, verify delayed delivery
 - Cancel a scheduled message
 
-### 4. MassTransit Integration Tests (`AzureServiceBusEmulator.MassTransit.Tests`)
+### 4. MassTransit Integration Tests (`AlmostServiceBus.MassTransit.Tests`)
 
 A test MassTransit application exercising real-world patterns:
 - Configure MassTransit with `UseAzureServiceBus()` pointed at the emulator

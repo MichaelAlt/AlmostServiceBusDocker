@@ -35,7 +35,7 @@ TcpMultiplexer (first-byte sniffing)
 - **SessionManager** (`src/.../Broker/SessionManager.cs`) — per-queue session partitioning
 - **ManagementLinkEndpoint** (`src/.../Amqp/ManagementLinkEndpoint.cs`) — handles `$management` AMQP operations
 - **ManagementApiEndpoints** (`src/.../Management/ManagementApiEndpoints.cs`) — Atom XML REST API with catch-all routes for slashed entity names
-- **Dashboard** (`src/AzureServiceBusEmulator.Dashboard/`) — Vue 3 app on port 15672
+- **Dashboard** (`src/AlmostServiceBus.Dashboard/`) — Vue 3 app on port 15672
 
 ### Namespace Isolation
 
@@ -77,13 +77,13 @@ Azure SDK's `ServiceBusMessageBatch` sends messages as a single AMQP transfer wh
 
 ```bash
 # Start emulator
-cd src/AzureServiceBusEmulator.Host && dotnet run
+cd src/AlmostServiceBus.Host && dotnet run
 
 # Run all tests
-dotnet test AzureServiceBusEmulator.sln --filter "FullyQualifiedName!~RealAsbConformanceTests" --verbosity quiet
+dotnet test AlmostServiceBus.sln --filter "FullyQualifiedName!~RealAsbConformanceTests" --verbosity quiet
 
 # Run against real ASB for comparison
-ASB_CONNECTION_STRING="Endpoint=sb://..." dotnet test tests/AzureServiceBusEmulator.Conformance.Tests --filter "FullyQualifiedName~RealAsbConformanceTests"
+ASB_CONNECTION_STRING="Endpoint=sb://..." dotnet test tests/AlmostServiceBus.Conformance.Tests --filter "FullyQualifiedName~RealAsbConformanceTests"
 
 # Run external framework tests (emulator must be running)
 cd external/wolverine && dotnet test src/Transports/Azure/Wolverine.AzureServiceBus.Tests --no-build -f net9.0

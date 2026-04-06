@@ -101,7 +101,7 @@ The client can change subscription by sending a new subscription message.
 ## Vue App Structure
 
 ```
-src/AzureServiceBusEmulator.Dashboard/
+src/AlmostServiceBus.Dashboard/
 ├── index.html
 ├── vite.config.ts
 ├── package.json

@@ -14,8 +14,8 @@
 
 ```
 src/
-  AzureServiceBusEmulator.Core/
-    AzureServiceBusEmulator.Core.csproj
+  AlmostServiceBus.Core/
+    AlmostServiceBus.Core.csproj
     Broker/
       BrokeredMessage.cs              # Message envelope
       QueueEntity.cs                  # Queue + its channel
@@ -38,15 +38,15 @@ src/
       AtomXmlReader.cs                # Deserialize Atom XML -> entity properties
       ManagementApiEndpoints.cs       # ASP.NET minimal API route handlers
       ManagementApiErrors.cs          # 404/409 error response helpers
-  AzureServiceBusEmulator.Host/
-    AzureServiceBusEmulator.Host.csproj
+  AlmostServiceBus.Host/
+    AlmostServiceBus.Host.csproj
     Program.cs                        # Kestrel + AMQP startup
-  AzureServiceBusEmulator.TestHost/
-    AzureServiceBusEmulator.TestHost.csproj
+  AlmostServiceBus.TestHost/
+    AlmostServiceBus.TestHost.csproj
     ServiceBusEmulatorFixture.cs      # xUnit IAsyncLifetime fixture
 tests/
-  AzureServiceBusEmulator.Tests/
-    AzureServiceBusEmulator.Tests.csproj
+  AlmostServiceBus.Tests/
+    AlmostServiceBus.Tests.csproj
     Broker/
       BrokeredMessageTests.cs
       QueueEntityTests.cs
@@ -65,17 +65,17 @@ tests/
       CbsRequestProcessorTests.cs
       SenderLinkEndpointTests.cs
       ReceiverLinkEndpointTests.cs
-  AzureServiceBusEmulator.SdkIntegration.Tests/
-    AzureServiceBusEmulator.SdkIntegration.Tests.csproj
+  AlmostServiceBus.SdkIntegration.Tests/
+    AlmostServiceBus.SdkIntegration.Tests.csproj
     AdminClientTests.cs               # ServiceBusAdministrationClient against emulator
     MessagingTests.cs                 # ServiceBusClient send/receive against emulator
-  AzureServiceBusEmulator.MassTransit.Tests/
-    AzureServiceBusEmulator.MassTransit.Tests.csproj
+  AlmostServiceBus.MassTransit.Tests/
+    AlmostServiceBus.MassTransit.Tests.csproj
     MassTransitTopologyTests.cs       # MT creates topology on startup
     MassTransitPubSubTests.cs         # MT publish/consume
     MassTransitSendTests.cs           # MT direct send
     MassTransitRequestResponseTests.cs # MT request/response
-AzureServiceBusEmulator.sln
+AlmostServiceBus.sln
 ```
 
 ---
@@ -83,76 +83,76 @@ AzureServiceBusEmulator.sln
 ## Task 1: Solution and Project Scaffolding
 
 **Files:**
-- Create: `AzureServiceBusEmulator.sln`
-- Create: `src/AzureServiceBusEmulator.Core/AzureServiceBusEmulator.Core.csproj`
-- Create: `src/AzureServiceBusEmulator.Host/AzureServiceBusEmulator.Host.csproj`
-- Create: `src/AzureServiceBusEmulator.TestHost/AzureServiceBusEmulator.TestHost.csproj`
-- Create: `tests/AzureServiceBusEmulator.Tests/AzureServiceBusEmulator.Tests.csproj`
-- Create: `tests/AzureServiceBusEmulator.SdkIntegration.Tests/AzureServiceBusEmulator.SdkIntegration.Tests.csproj`
-- Create: `tests/AzureServiceBusEmulator.MassTransit.Tests/AzureServiceBusEmulator.MassTransit.Tests.csproj`
+- Create: `AlmostServiceBus.sln`
+- Create: `src/AlmostServiceBus.Core/AlmostServiceBus.Core.csproj`
+- Create: `src/AlmostServiceBus.Host/AlmostServiceBus.Host.csproj`
+- Create: `src/AlmostServiceBus.TestHost/AlmostServiceBus.TestHost.csproj`
+- Create: `tests/AlmostServiceBus.Tests/AlmostServiceBus.Tests.csproj`
+- Create: `tests/AlmostServiceBus.SdkIntegration.Tests/AlmostServiceBus.SdkIntegration.Tests.csproj`
+- Create: `tests/AlmostServiceBus.MassTransit.Tests/AlmostServiceBus.MassTransit.Tests.csproj`
 - Create: `Directory.Build.props`
 
 - [ ] **Step 1: Create solution and projects**
 
 ```bash
-dotnet new sln -n AzureServiceBusEmulator
+dotnet new sln -n AlmostServiceBus
 
 # Core library
-dotnet new classlib -n AzureServiceBusEmulator.Core -o src/AzureServiceBusEmulator.Core -f net10.0
-dotnet sln add src/AzureServiceBusEmulator.Core
+dotnet new classlib -n AlmostServiceBus.Core -o src/AlmostServiceBus.Core -f net10.0
+dotnet sln add src/AlmostServiceBus.Core
 
 # Host console app
-dotnet new web -n AzureServiceBusEmulator.Host -o src/AzureServiceBusEmulator.Host -f net10.0
-dotnet sln add src/AzureServiceBusEmulator.Host
+dotnet new web -n AlmostServiceBus.Host -o src/AlmostServiceBus.Host -f net10.0
+dotnet sln add src/AlmostServiceBus.Host
 
 # TestHost library
-dotnet new classlib -n AzureServiceBusEmulator.TestHost -o src/AzureServiceBusEmulator.TestHost -f net10.0
-dotnet sln add src/AzureServiceBusEmulator.TestHost
+dotnet new classlib -n AlmostServiceBus.TestHost -o src/AlmostServiceBus.TestHost -f net10.0
+dotnet sln add src/AlmostServiceBus.TestHost
 
 # Unit tests
-dotnet new xunit -n AzureServiceBusEmulator.Tests -o tests/AzureServiceBusEmulator.Tests -f net10.0
-dotnet sln add tests/AzureServiceBusEmulator.Tests
+dotnet new xunit -n AlmostServiceBus.Tests -o tests/AlmostServiceBus.Tests -f net10.0
+dotnet sln add tests/AlmostServiceBus.Tests
 
 # SDK integration tests
-dotnet new xunit -n AzureServiceBusEmulator.SdkIntegration.Tests -o tests/AzureServiceBusEmulator.SdkIntegration.Tests -f net10.0
-dotnet sln add tests/AzureServiceBusEmulator.SdkIntegration.Tests
+dotnet new xunit -n AlmostServiceBus.SdkIntegration.Tests -o tests/AlmostServiceBus.SdkIntegration.Tests -f net10.0
+dotnet sln add tests/AlmostServiceBus.SdkIntegration.Tests
 
 # MassTransit integration tests
-dotnet new xunit -n AzureServiceBusEmulator.MassTransit.Tests -o tests/AzureServiceBusEmulator.MassTransit.Tests -f net10.0
-dotnet sln add tests/AzureServiceBusEmulator.MassTransit.Tests
+dotnet new xunit -n AlmostServiceBus.MassTransit.Tests -o tests/AlmostServiceBus.MassTransit.Tests -f net10.0
+dotnet sln add tests/AlmostServiceBus.MassTransit.Tests
 ```
 
 - [ ] **Step 2: Add NuGet packages**
 
 ```bash
 # Core dependencies
-dotnet add src/AzureServiceBusEmulator.Core package Amqp.Net.Lite
-dotnet add src/AzureServiceBusEmulator.Core package Microsoft.AspNetCore.App.Ref --version "10.0.*" || true
+dotnet add src/AlmostServiceBus.Core package Amqp.Net.Lite
+dotnet add src/AlmostServiceBus.Core package Microsoft.AspNetCore.App.Ref --version "10.0.*" || true
 # Core needs ASP.NET Core types - use FrameworkReference instead (see step 3)
 
 # Host references Core
-dotnet add src/AzureServiceBusEmulator.Host reference src/AzureServiceBusEmulator.Core
+dotnet add src/AlmostServiceBus.Host reference src/AlmostServiceBus.Core
 
 # TestHost references Core
-dotnet add src/AzureServiceBusEmulator.TestHost reference src/AzureServiceBusEmulator.Core
-dotnet add src/AzureServiceBusEmulator.TestHost package xunit.abstractions
+dotnet add src/AlmostServiceBus.TestHost reference src/AlmostServiceBus.Core
+dotnet add src/AlmostServiceBus.TestHost package xunit.abstractions
 
 # Unit tests reference Core
-dotnet add tests/AzureServiceBusEmulator.Tests reference src/AzureServiceBusEmulator.Core
+dotnet add tests/AlmostServiceBus.Tests reference src/AlmostServiceBus.Core
 
 # SDK integration tests reference TestHost
-dotnet add tests/AzureServiceBusEmulator.SdkIntegration.Tests reference src/AzureServiceBusEmulator.TestHost
-dotnet add tests/AzureServiceBusEmulator.SdkIntegration.Tests package Azure.Messaging.ServiceBus
+dotnet add tests/AlmostServiceBus.SdkIntegration.Tests reference src/AlmostServiceBus.TestHost
+dotnet add tests/AlmostServiceBus.SdkIntegration.Tests package Azure.Messaging.ServiceBus
 
 # MassTransit tests reference TestHost
-dotnet add tests/AzureServiceBusEmulator.MassTransit.Tests reference src/AzureServiceBusEmulator.TestHost
-dotnet add tests/AzureServiceBusEmulator.MassTransit.Tests package Azure.Messaging.ServiceBus
-dotnet add tests/AzureServiceBusEmulator.MassTransit.Tests package MassTransit.Azure.ServiceBus.Core
+dotnet add tests/AlmostServiceBus.MassTransit.Tests reference src/AlmostServiceBus.TestHost
+dotnet add tests/AlmostServiceBus.MassTransit.Tests package Azure.Messaging.ServiceBus
+dotnet add tests/AlmostServiceBus.MassTransit.Tests package MassTransit.Azure.ServiceBus.Core
 ```
 
 - [ ] **Step 3: Configure Core project for ASP.NET Core FrameworkReference**
 
-The Core project is a class library that needs ASP.NET Core types (for Kestrel, minimal APIs). Edit `src/AzureServiceBusEmulator.Core/AzureServiceBusEmulator.Core.csproj`:
+The Core project is a class library that needs ASP.NET Core types (for Kestrel, minimal APIs). Edit `src/AlmostServiceBus.Core/AlmostServiceBus.Core.csproj`:
 
 ```xml
 <Project Sdk="Microsoft.NET.Sdk">
@@ -187,16 +187,16 @@ Create `Directory.Build.props` in the repo root:
 - [ ] **Step 5: Clean up template files**
 
 Delete the auto-generated template files:
-- `src/AzureServiceBusEmulator.Core/Class1.cs`
-- `src/AzureServiceBusEmulator.TestHost/Class1.cs`
-- `tests/AzureServiceBusEmulator.Tests/UnitTest1.cs`
-- `tests/AzureServiceBusEmulator.SdkIntegration.Tests/UnitTest1.cs`
-- `tests/AzureServiceBusEmulator.MassTransit.Tests/UnitTest1.cs`
+- `src/AlmostServiceBus.Core/Class1.cs`
+- `src/AlmostServiceBus.TestHost/Class1.cs`
+- `tests/AlmostServiceBus.Tests/UnitTest1.cs`
+- `tests/AlmostServiceBus.SdkIntegration.Tests/UnitTest1.cs`
+- `tests/AlmostServiceBus.MassTransit.Tests/UnitTest1.cs`
 
 - [ ] **Step 6: Verify solution builds**
 
 ```bash
-dotnet build AzureServiceBusEmulator.sln
+dotnet build AlmostServiceBus.sln
 ```
 
 Expected: Build succeeds with 0 errors.
@@ -213,19 +213,19 @@ git commit -m "feat: scaffold solution with Core, Host, TestHost, and test proje
 ## Task 2: BrokeredMessage and QueueEntity
 
 **Files:**
-- Create: `src/AzureServiceBusEmulator.Core/Broker/BrokeredMessage.cs`
-- Create: `src/AzureServiceBusEmulator.Core/Broker/QueueEntity.cs`
-- Create: `tests/AzureServiceBusEmulator.Tests/Broker/BrokeredMessageTests.cs`
-- Create: `tests/AzureServiceBusEmulator.Tests/Broker/QueueEntityTests.cs`
+- Create: `src/AlmostServiceBus.Core/Broker/BrokeredMessage.cs`
+- Create: `src/AlmostServiceBus.Core/Broker/QueueEntity.cs`
+- Create: `tests/AlmostServiceBus.Tests/Broker/BrokeredMessageTests.cs`
+- Create: `tests/AlmostServiceBus.Tests/Broker/QueueEntityTests.cs`
 
 - [ ] **Step 1: Write BrokeredMessage tests**
 
-Create `tests/AzureServiceBusEmulator.Tests/Broker/BrokeredMessageTests.cs`:
+Create `tests/AlmostServiceBus.Tests/Broker/BrokeredMessageTests.cs`:
 
 ```csharp
-using AzureServiceBusEmulator.Core.Broker;
+using AlmostServiceBus.Core.Broker;
 
-namespace AzureServiceBusEmulator.Tests.Broker;
+namespace AlmostServiceBus.Tests.Broker;
 
 public class BrokeredMessageTests
 {
@@ -285,17 +285,17 @@ public class BrokeredMessageTests
 - [ ] **Step 2: Run tests to verify they fail**
 
 ```bash
-dotnet test tests/AzureServiceBusEmulator.Tests --filter "FullyQualifiedName~BrokeredMessageTests" -v minimal
+dotnet test tests/AlmostServiceBus.Tests --filter "FullyQualifiedName~BrokeredMessageTests" -v minimal
 ```
 
 Expected: FAIL — `BrokeredMessage` type does not exist.
 
 - [ ] **Step 3: Implement BrokeredMessage**
 
-Create `src/AzureServiceBusEmulator.Core/Broker/BrokeredMessage.cs`:
+Create `src/AlmostServiceBus.Core/Broker/BrokeredMessage.cs`:
 
 ```csharp
-namespace AzureServiceBusEmulator.Core.Broker;
+namespace AlmostServiceBus.Core.Broker;
 
 public class BrokeredMessage
 {
@@ -347,19 +347,19 @@ public class BrokeredMessage
 - [ ] **Step 4: Run BrokeredMessage tests**
 
 ```bash
-dotnet test tests/AzureServiceBusEmulator.Tests --filter "FullyQualifiedName~BrokeredMessageTests" -v minimal
+dotnet test tests/AlmostServiceBus.Tests --filter "FullyQualifiedName~BrokeredMessageTests" -v minimal
 ```
 
 Expected: All 3 tests PASS.
 
 - [ ] **Step 5: Write QueueEntity tests**
 
-Create `tests/AzureServiceBusEmulator.Tests/Broker/QueueEntityTests.cs`:
+Create `tests/AlmostServiceBus.Tests/Broker/QueueEntityTests.cs`:
 
 ```csharp
-using AzureServiceBusEmulator.Core.Broker;
+using AlmostServiceBus.Core.Broker;
 
-namespace AzureServiceBusEmulator.Tests.Broker;
+namespace AlmostServiceBus.Tests.Broker;
 
 public class QueueEntityTests
 {
@@ -486,20 +486,20 @@ public class QueueEntityTests
 - [ ] **Step 6: Run QueueEntity tests to verify they fail**
 
 ```bash
-dotnet test tests/AzureServiceBusEmulator.Tests --filter "FullyQualifiedName~QueueEntityTests" -v minimal
+dotnet test tests/AlmostServiceBus.Tests --filter "FullyQualifiedName~QueueEntityTests" -v minimal
 ```
 
 Expected: FAIL — `QueueEntity` type does not exist.
 
 - [ ] **Step 7: Implement QueueEntity**
 
-Create `src/AzureServiceBusEmulator.Core/Broker/QueueEntity.cs`:
+Create `src/AlmostServiceBus.Core/Broker/QueueEntity.cs`:
 
 ```csharp
 using System.Collections.Concurrent;
 using System.Threading.Channels;
 
-namespace AzureServiceBusEmulator.Core.Broker;
+namespace AlmostServiceBus.Core.Broker;
 
 public class QueueEntity
 {
@@ -590,7 +590,7 @@ public class QueueEntity
 - [ ] **Step 8: Run all QueueEntity tests**
 
 ```bash
-dotnet test tests/AzureServiceBusEmulator.Tests --filter "FullyQualifiedName~QueueEntityTests" -v minimal
+dotnet test tests/AlmostServiceBus.Tests --filter "FullyQualifiedName~QueueEntityTests" -v minimal
 ```
 
 Expected: All 7 tests PASS.
@@ -607,20 +607,20 @@ git commit -m "feat: add BrokeredMessage and QueueEntity with message settlement
 ## Task 3: TopicEntity, SubscriptionEntity, RuleEntity
 
 **Files:**
-- Create: `src/AzureServiceBusEmulator.Core/Broker/RuleEntity.cs`
-- Create: `src/AzureServiceBusEmulator.Core/Broker/SubscriptionEntity.cs`
-- Create: `src/AzureServiceBusEmulator.Core/Broker/TopicEntity.cs`
-- Create: `tests/AzureServiceBusEmulator.Tests/Broker/TopicEntityTests.cs`
-- Create: `tests/AzureServiceBusEmulator.Tests/Broker/SubscriptionEntityTests.cs`
+- Create: `src/AlmostServiceBus.Core/Broker/RuleEntity.cs`
+- Create: `src/AlmostServiceBus.Core/Broker/SubscriptionEntity.cs`
+- Create: `src/AlmostServiceBus.Core/Broker/TopicEntity.cs`
+- Create: `tests/AlmostServiceBus.Tests/Broker/TopicEntityTests.cs`
+- Create: `tests/AlmostServiceBus.Tests/Broker/SubscriptionEntityTests.cs`
 
 - [ ] **Step 1: Write TopicEntity tests**
 
-Create `tests/AzureServiceBusEmulator.Tests/Broker/TopicEntityTests.cs`:
+Create `tests/AlmostServiceBus.Tests/Broker/TopicEntityTests.cs`:
 
 ```csharp
-using AzureServiceBusEmulator.Core.Broker;
+using AlmostServiceBus.Core.Broker;
 
-namespace AzureServiceBusEmulator.Tests.Broker;
+namespace AlmostServiceBus.Tests.Broker;
 
 public class TopicEntityTests
 {
@@ -719,17 +719,17 @@ public class TopicEntityTests
 - [ ] **Step 2: Run tests to verify they fail**
 
 ```bash
-dotnet test tests/AzureServiceBusEmulator.Tests --filter "FullyQualifiedName~TopicEntityTests" -v minimal
+dotnet test tests/AlmostServiceBus.Tests --filter "FullyQualifiedName~TopicEntityTests" -v minimal
 ```
 
 Expected: FAIL.
 
 - [ ] **Step 3: Implement RuleEntity**
 
-Create `src/AzureServiceBusEmulator.Core/Broker/RuleEntity.cs`:
+Create `src/AlmostServiceBus.Core/Broker/RuleEntity.cs`:
 
 ```csharp
-namespace AzureServiceBusEmulator.Core.Broker;
+namespace AlmostServiceBus.Core.Broker;
 
 public class RuleEntity
 {
@@ -762,12 +762,12 @@ public enum RuleFilterType
 
 - [ ] **Step 4: Implement SubscriptionEntity**
 
-Create `src/AzureServiceBusEmulator.Core/Broker/SubscriptionEntity.cs`:
+Create `src/AlmostServiceBus.Core/Broker/SubscriptionEntity.cs`:
 
 ```csharp
 using System.Collections.Concurrent;
 
-namespace AzureServiceBusEmulator.Core.Broker;
+namespace AlmostServiceBus.Core.Broker;
 
 public class SubscriptionEntity
 {
@@ -831,12 +831,12 @@ public class SubscriptionEntity
 
 - [ ] **Step 5: Implement TopicEntity**
 
-Create `src/AzureServiceBusEmulator.Core/Broker/TopicEntity.cs`:
+Create `src/AlmostServiceBus.Core/Broker/TopicEntity.cs`:
 
 ```csharp
 using System.Collections.Concurrent;
 
-namespace AzureServiceBusEmulator.Core.Broker;
+namespace AlmostServiceBus.Core.Broker;
 
 public class TopicEntity
 {
@@ -878,19 +878,19 @@ public class TopicEntity
 - [ ] **Step 6: Run all topic/subscription tests**
 
 ```bash
-dotnet test tests/AzureServiceBusEmulator.Tests --filter "FullyQualifiedName~TopicEntityTests" -v minimal
+dotnet test tests/AlmostServiceBus.Tests --filter "FullyQualifiedName~TopicEntityTests" -v minimal
 ```
 
 Expected: All 7 tests PASS.
 
 - [ ] **Step 7: Write SubscriptionEntity tests**
 
-Create `tests/AzureServiceBusEmulator.Tests/Broker/SubscriptionEntityTests.cs`:
+Create `tests/AlmostServiceBus.Tests/Broker/SubscriptionEntityTests.cs`:
 
 ```csharp
-using AzureServiceBusEmulator.Core.Broker;
+using AlmostServiceBus.Core.Broker;
 
-namespace AzureServiceBusEmulator.Tests.Broker;
+namespace AlmostServiceBus.Tests.Broker;
 
 public class SubscriptionEntityTests
 {
@@ -951,7 +951,7 @@ public class SubscriptionEntityTests
 - [ ] **Step 8: Run subscription tests**
 
 ```bash
-dotnet test tests/AzureServiceBusEmulator.Tests --filter "FullyQualifiedName~SubscriptionEntityTests" -v minimal
+dotnet test tests/AlmostServiceBus.Tests --filter "FullyQualifiedName~SubscriptionEntityTests" -v minimal
 ```
 
 Expected: All 5 tests PASS.
@@ -968,18 +968,18 @@ git commit -m "feat: add TopicEntity, SubscriptionEntity, RuleEntity with fan-ou
 ## Task 4: NamespaceRegistry and NamespaceContext
 
 **Files:**
-- Create: `src/AzureServiceBusEmulator.Core/Broker/NamespaceContext.cs`
-- Create: `src/AzureServiceBusEmulator.Core/Broker/NamespaceRegistry.cs`
-- Create: `tests/AzureServiceBusEmulator.Tests/Broker/NamespaceRegistryTests.cs`
+- Create: `src/AlmostServiceBus.Core/Broker/NamespaceContext.cs`
+- Create: `src/AlmostServiceBus.Core/Broker/NamespaceRegistry.cs`
+- Create: `tests/AlmostServiceBus.Tests/Broker/NamespaceRegistryTests.cs`
 
 - [ ] **Step 1: Write NamespaceRegistry tests**
 
-Create `tests/AzureServiceBusEmulator.Tests/Broker/NamespaceRegistryTests.cs`:
+Create `tests/AlmostServiceBus.Tests/Broker/NamespaceRegistryTests.cs`:
 
 ```csharp
-using AzureServiceBusEmulator.Core.Broker;
+using AlmostServiceBus.Core.Broker;
 
-namespace AzureServiceBusEmulator.Tests.Broker;
+namespace AlmostServiceBus.Tests.Broker;
 
 public class NamespaceRegistryTests
 {
@@ -1098,19 +1098,19 @@ public class NamespaceRegistryTests
 - [ ] **Step 2: Run tests to verify they fail**
 
 ```bash
-dotnet test tests/AzureServiceBusEmulator.Tests --filter "FullyQualifiedName~NamespaceRegistryTests" -v minimal
+dotnet test tests/AlmostServiceBus.Tests --filter "FullyQualifiedName~NamespaceRegistryTests" -v minimal
 ```
 
 Expected: FAIL.
 
 - [ ] **Step 3: Implement NamespaceContext**
 
-Create `src/AzureServiceBusEmulator.Core/Broker/NamespaceContext.cs`:
+Create `src/AlmostServiceBus.Core/Broker/NamespaceContext.cs`:
 
 ```csharp
 using System.Collections.Concurrent;
 
-namespace AzureServiceBusEmulator.Core.Broker;
+namespace AlmostServiceBus.Core.Broker;
 
 public class NamespaceContext
 {
@@ -1194,12 +1194,12 @@ public class NamespaceContext
 
 - [ ] **Step 4: Implement NamespaceRegistry**
 
-Create `src/AzureServiceBusEmulator.Core/Broker/NamespaceRegistry.cs`:
+Create `src/AlmostServiceBus.Core/Broker/NamespaceRegistry.cs`:
 
 ```csharp
 using System.Collections.Concurrent;
 
-namespace AzureServiceBusEmulator.Core.Broker;
+namespace AlmostServiceBus.Core.Broker;
 
 public class NamespaceRegistry
 {
@@ -1220,7 +1220,7 @@ public class NamespaceRegistry
 - [ ] **Step 5: Run all namespace tests**
 
 ```bash
-dotnet test tests/AzureServiceBusEmulator.Tests --filter "FullyQualifiedName~NamespaceRegistryTests" -v minimal
+dotnet test tests/AlmostServiceBus.Tests --filter "FullyQualifiedName~NamespaceRegistryTests" -v minimal
 ```
 
 Expected: All 11 tests PASS.
@@ -1237,17 +1237,17 @@ git commit -m "feat: add NamespaceContext and NamespaceRegistry with tenant isol
 ## Task 5: Scheduled Message Processor
 
 **Files:**
-- Create: `src/AzureServiceBusEmulator.Core/Broker/ScheduledMessageProcessor.cs`
-- Create: `tests/AzureServiceBusEmulator.Tests/Broker/ScheduledMessageProcessorTests.cs`
+- Create: `src/AlmostServiceBus.Core/Broker/ScheduledMessageProcessor.cs`
+- Create: `tests/AlmostServiceBus.Tests/Broker/ScheduledMessageProcessorTests.cs`
 
 - [ ] **Step 1: Write ScheduledMessageProcessor tests**
 
-Create `tests/AzureServiceBusEmulator.Tests/Broker/ScheduledMessageProcessorTests.cs`:
+Create `tests/AlmostServiceBus.Tests/Broker/ScheduledMessageProcessorTests.cs`:
 
 ```csharp
-using AzureServiceBusEmulator.Core.Broker;
+using AlmostServiceBus.Core.Broker;
 
-namespace AzureServiceBusEmulator.Tests.Broker;
+namespace AlmostServiceBus.Tests.Broker;
 
 public class ScheduledMessageProcessorTests
 {
@@ -1357,19 +1357,19 @@ public class ScheduledMessageProcessorTests
 - [ ] **Step 2: Run tests to verify they fail**
 
 ```bash
-dotnet test tests/AzureServiceBusEmulator.Tests --filter "FullyQualifiedName~ScheduledMessageProcessorTests" -v minimal
+dotnet test tests/AlmostServiceBus.Tests --filter "FullyQualifiedName~ScheduledMessageProcessorTests" -v minimal
 ```
 
 Expected: FAIL.
 
 - [ ] **Step 3: Implement ScheduledMessageProcessor**
 
-Create `src/AzureServiceBusEmulator.Core/Broker/ScheduledMessageProcessor.cs`:
+Create `src/AlmostServiceBus.Core/Broker/ScheduledMessageProcessor.cs`:
 
 ```csharp
 using System.Collections.Concurrent;
 
-namespace AzureServiceBusEmulator.Core.Broker;
+namespace AlmostServiceBus.Core.Broker;
 
 public class ScheduledMessageProcessor : IDisposable
 {
@@ -1456,7 +1456,7 @@ public class ScheduledMessageProcessor : IDisposable
 - [ ] **Step 4: Run all scheduled message tests**
 
 ```bash
-dotnet test tests/AzureServiceBusEmulator.Tests --filter "FullyQualifiedName~ScheduledMessageProcessorTests" -v minimal
+dotnet test tests/AlmostServiceBus.Tests --filter "FullyQualifiedName~ScheduledMessageProcessorTests" -v minimal
 ```
 
 Expected: All 6 tests PASS.
@@ -1473,21 +1473,21 @@ git commit -m "feat: add ScheduledMessageProcessor with background delivery time
 ## Task 6: Atom XML Serialization (Writer)
 
 **Files:**
-- Create: `src/AzureServiceBusEmulator.Core/Management/AtomXmlWriter.cs`
-- Create: `tests/AzureServiceBusEmulator.Tests/Management/AtomXmlWriterTests.cs`
+- Create: `src/AlmostServiceBus.Core/Management/AtomXmlWriter.cs`
+- Create: `tests/AlmostServiceBus.Tests/Management/AtomXmlWriterTests.cs`
 
 The Azure Service Bus Atom XML format wraps entity descriptions inside `<entry>` elements. The SDK expects specific XML namespaces and element names. This is the highest-risk part of the emulator — the format must match exactly.
 
 - [ ] **Step 1: Write AtomXmlWriter tests**
 
-Create `tests/AzureServiceBusEmulator.Tests/Management/AtomXmlWriterTests.cs`:
+Create `tests/AlmostServiceBus.Tests/Management/AtomXmlWriterTests.cs`:
 
 ```csharp
 using System.Xml.Linq;
-using AzureServiceBusEmulator.Core.Broker;
-using AzureServiceBusEmulator.Core.Management;
+using AlmostServiceBus.Core.Broker;
+using AlmostServiceBus.Core.Management;
 
-namespace AzureServiceBusEmulator.Tests.Management;
+namespace AlmostServiceBus.Tests.Management;
 
 public class AtomXmlWriterTests
 {
@@ -1589,20 +1589,20 @@ public class AtomXmlWriterTests
 - [ ] **Step 2: Run tests to verify they fail**
 
 ```bash
-dotnet test tests/AzureServiceBusEmulator.Tests --filter "FullyQualifiedName~AtomXmlWriterTests" -v minimal
+dotnet test tests/AlmostServiceBus.Tests --filter "FullyQualifiedName~AtomXmlWriterTests" -v minimal
 ```
 
 Expected: FAIL.
 
 - [ ] **Step 3: Implement AtomXmlWriter**
 
-Create `src/AzureServiceBusEmulator.Core/Management/AtomXmlWriter.cs`:
+Create `src/AlmostServiceBus.Core/Management/AtomXmlWriter.cs`:
 
 ```csharp
 using System.Xml.Linq;
-using AzureServiceBusEmulator.Core.Broker;
+using AlmostServiceBus.Core.Broker;
 
-namespace AzureServiceBusEmulator.Core.Management;
+namespace AlmostServiceBus.Core.Management;
 
 public static class AtomXmlWriter
 {
@@ -1769,7 +1769,7 @@ public static class AtomXmlWriter
 - [ ] **Step 4: Run AtomXmlWriter tests**
 
 ```bash
-dotnet test tests/AzureServiceBusEmulator.Tests --filter "FullyQualifiedName~AtomXmlWriterTests" -v minimal
+dotnet test tests/AlmostServiceBus.Tests --filter "FullyQualifiedName~AtomXmlWriterTests" -v minimal
 ```
 
 Expected: All 5 tests PASS.
@@ -1786,18 +1786,18 @@ git commit -m "feat: add AtomXmlWriter for Atom XML entity serialization"
 ## Task 7: Atom XML Deserialization (Reader)
 
 **Files:**
-- Create: `src/AzureServiceBusEmulator.Core/Management/AtomXmlReader.cs`
-- Create: `tests/AzureServiceBusEmulator.Tests/Management/AtomXmlReaderTests.cs`
+- Create: `src/AlmostServiceBus.Core/Management/AtomXmlReader.cs`
+- Create: `tests/AlmostServiceBus.Tests/Management/AtomXmlReaderTests.cs`
 
 - [ ] **Step 1: Write AtomXmlReader tests**
 
-Create `tests/AzureServiceBusEmulator.Tests/Management/AtomXmlReaderTests.cs`:
+Create `tests/AlmostServiceBus.Tests/Management/AtomXmlReaderTests.cs`:
 
 ```csharp
-using AzureServiceBusEmulator.Core.Broker;
-using AzureServiceBusEmulator.Core.Management;
+using AlmostServiceBus.Core.Broker;
+using AlmostServiceBus.Core.Management;
 
-namespace AzureServiceBusEmulator.Tests.Management;
+namespace AlmostServiceBus.Tests.Management;
 
 public class AtomXmlReaderTests
 {
@@ -1864,20 +1864,20 @@ public class AtomXmlReaderTests
 - [ ] **Step 2: Run tests to verify they fail**
 
 ```bash
-dotnet test tests/AzureServiceBusEmulator.Tests --filter "FullyQualifiedName~AtomXmlReaderTests" -v minimal
+dotnet test tests/AlmostServiceBus.Tests --filter "FullyQualifiedName~AtomXmlReaderTests" -v minimal
 ```
 
 Expected: FAIL.
 
 - [ ] **Step 3: Implement AtomXmlReader**
 
-Create `src/AzureServiceBusEmulator.Core/Management/AtomXmlReader.cs`:
+Create `src/AlmostServiceBus.Core/Management/AtomXmlReader.cs`:
 
 ```csharp
 using System.Xml.Linq;
-using AzureServiceBusEmulator.Core.Broker;
+using AlmostServiceBus.Core.Broker;
 
-namespace AzureServiceBusEmulator.Core.Management;
+namespace AlmostServiceBus.Core.Management;
 
 public static class AtomXmlReader
 {
@@ -2048,7 +2048,7 @@ public record RuleProperties
 - [ ] **Step 4: Run AtomXmlReader tests**
 
 ```bash
-dotnet test tests/AzureServiceBusEmulator.Tests --filter "FullyQualifiedName~AtomXmlReaderTests" -v minimal
+dotnet test tests/AlmostServiceBus.Tests --filter "FullyQualifiedName~AtomXmlReaderTests" -v minimal
 ```
 
 Expected: All 5 tests PASS.
@@ -2065,16 +2065,16 @@ git commit -m "feat: add AtomXmlReader for Atom XML entity deserialization"
 ## Task 8: REST Management API Error Helpers
 
 **Files:**
-- Create: `src/AzureServiceBusEmulator.Core/Management/ManagementApiErrors.cs`
+- Create: `src/AlmostServiceBus.Core/Management/ManagementApiErrors.cs`
 
 - [ ] **Step 1: Implement ManagementApiErrors**
 
-Create `src/AzureServiceBusEmulator.Core/Management/ManagementApiErrors.cs`:
+Create `src/AlmostServiceBus.Core/Management/ManagementApiErrors.cs`:
 
 ```csharp
 using Microsoft.AspNetCore.Http;
 
-namespace AzureServiceBusEmulator.Core.Management;
+namespace AlmostServiceBus.Core.Management;
 
 public static class ManagementApiErrors
 {
@@ -2102,7 +2102,7 @@ public static class ManagementApiErrors
 - [ ] **Step 2: Verify it compiles**
 
 ```bash
-dotnet build src/AzureServiceBusEmulator.Core
+dotnet build src/AlmostServiceBus.Core
 ```
 
 Expected: Build succeeds.
@@ -2119,23 +2119,23 @@ git commit -m "feat: add ManagementApiErrors for 404/409 error responses"
 ## Task 9: REST Management API Endpoints
 
 **Files:**
-- Create: `src/AzureServiceBusEmulator.Core/Management/ManagementApiEndpoints.cs`
-- Create: `tests/AzureServiceBusEmulator.Tests/Management/ManagementApiQueueTests.cs`
-- Create: `tests/AzureServiceBusEmulator.Tests/Management/ManagementApiTopicTests.cs`
-- Create: `tests/AzureServiceBusEmulator.Tests/Management/ManagementApiSubscriptionTests.cs`
-- Create: `tests/AzureServiceBusEmulator.Tests/Management/ManagementApiRuleTests.cs`
+- Create: `src/AlmostServiceBus.Core/Management/ManagementApiEndpoints.cs`
+- Create: `tests/AlmostServiceBus.Tests/Management/ManagementApiQueueTests.cs`
+- Create: `tests/AlmostServiceBus.Tests/Management/ManagementApiTopicTests.cs`
+- Create: `tests/AlmostServiceBus.Tests/Management/ManagementApiSubscriptionTests.cs`
+- Create: `tests/AlmostServiceBus.Tests/Management/ManagementApiRuleTests.cs`
 
 - [ ] **Step 1: Implement ManagementApiEndpoints**
 
-Create `src/AzureServiceBusEmulator.Core/Management/ManagementApiEndpoints.cs`:
+Create `src/AlmostServiceBus.Core/Management/ManagementApiEndpoints.cs`:
 
 ```csharp
-using AzureServiceBusEmulator.Core.Broker;
+using AlmostServiceBus.Core.Broker;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
 
-namespace AzureServiceBusEmulator.Core.Management;
+namespace AlmostServiceBus.Core.Management;
 
 public static class ManagementApiEndpoints
 {
@@ -2436,19 +2436,19 @@ private static void ApplyTopicProperties(TopicEntity topic, string? xml)
 
 - [ ] **Step 2: Write Management API queue tests**
 
-Create `tests/AzureServiceBusEmulator.Tests/Management/ManagementApiQueueTests.cs`:
+Create `tests/AlmostServiceBus.Tests/Management/ManagementApiQueueTests.cs`:
 
 ```csharp
 using System.Net;
 using System.Text;
-using AzureServiceBusEmulator.Core.Broker;
-using AzureServiceBusEmulator.Core.Management;
+using AlmostServiceBus.Core.Broker;
+using AlmostServiceBus.Core.Management;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.Hosting;
 
-namespace AzureServiceBusEmulator.Tests.Management;
+namespace AlmostServiceBus.Tests.Management;
 
 public class ManagementApiQueueTests : IAsyncLifetime
 {
@@ -2529,19 +2529,19 @@ public class ManagementApiQueueTests : IAsyncLifetime
 
 - [ ] **Step 3: Write Management API topic tests**
 
-Create `tests/AzureServiceBusEmulator.Tests/Management/ManagementApiTopicTests.cs`:
+Create `tests/AlmostServiceBus.Tests/Management/ManagementApiTopicTests.cs`:
 
 ```csharp
 using System.Net;
 using System.Text;
-using AzureServiceBusEmulator.Core.Broker;
-using AzureServiceBusEmulator.Core.Management;
+using AlmostServiceBus.Core.Broker;
+using AlmostServiceBus.Core.Management;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.Hosting;
 
-namespace AzureServiceBusEmulator.Tests.Management;
+namespace AlmostServiceBus.Tests.Management;
 
 public class ManagementApiTopicTests : IAsyncLifetime
 {
@@ -2595,19 +2595,19 @@ public class ManagementApiTopicTests : IAsyncLifetime
 
 - [ ] **Step 4: Write Management API subscription tests**
 
-Create `tests/AzureServiceBusEmulator.Tests/Management/ManagementApiSubscriptionTests.cs`:
+Create `tests/AlmostServiceBus.Tests/Management/ManagementApiSubscriptionTests.cs`:
 
 ```csharp
 using System.Net;
 using System.Text;
-using AzureServiceBusEmulator.Core.Broker;
-using AzureServiceBusEmulator.Core.Management;
+using AlmostServiceBus.Core.Broker;
+using AlmostServiceBus.Core.Management;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.Hosting;
 
-namespace AzureServiceBusEmulator.Tests.Management;
+namespace AlmostServiceBus.Tests.Management;
 
 public class ManagementApiSubscriptionTests : IAsyncLifetime
 {
@@ -2699,19 +2699,19 @@ public class ManagementApiSubscriptionTests : IAsyncLifetime
 
 - [ ] **Step 5: Write Management API rule tests**
 
-Create `tests/AzureServiceBusEmulator.Tests/Management/ManagementApiRuleTests.cs`:
+Create `tests/AlmostServiceBus.Tests/Management/ManagementApiRuleTests.cs`:
 
 ```csharp
 using System.Net;
 using System.Text;
-using AzureServiceBusEmulator.Core.Broker;
-using AzureServiceBusEmulator.Core.Management;
+using AlmostServiceBus.Core.Broker;
+using AlmostServiceBus.Core.Management;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.Hosting;
 
-namespace AzureServiceBusEmulator.Tests.Management;
+namespace AlmostServiceBus.Tests.Management;
 
 public class ManagementApiRuleTests : IAsyncLifetime
 {
@@ -2785,7 +2785,7 @@ public class ManagementApiRuleTests : IAsyncLifetime
 - [ ] **Step 6: Run all management API tests**
 
 ```bash
-dotnet test tests/AzureServiceBusEmulator.Tests --filter "FullyQualifiedName~ManagementApi" -v minimal
+dotnet test tests/AlmostServiceBus.Tests --filter "FullyQualifiedName~ManagementApi" -v minimal
 ```
 
 Expected: All tests PASS.
@@ -2802,19 +2802,19 @@ git commit -m "feat: add REST management API endpoints with queue/topic/subscrip
 ## Task 10: CBS Authentication Handler
 
 **Files:**
-- Create: `src/AzureServiceBusEmulator.Core/Amqp/CbsRequestProcessor.cs`
-- Create: `tests/AzureServiceBusEmulator.Tests/Amqp/CbsRequestProcessorTests.cs`
+- Create: `src/AlmostServiceBus.Core/Amqp/CbsRequestProcessor.cs`
+- Create: `tests/AlmostServiceBus.Tests/Amqp/CbsRequestProcessorTests.cs`
 
 - [ ] **Step 1: Write CBS tests**
 
-Create `tests/AzureServiceBusEmulator.Tests/Amqp/CbsRequestProcessorTests.cs`:
+Create `tests/AlmostServiceBus.Tests/Amqp/CbsRequestProcessorTests.cs`:
 
 ```csharp
 using Amqp;
 using Amqp.Framing;
-using AzureServiceBusEmulator.Core.Amqp;
+using AlmostServiceBus.Core.Amqp;
 
-namespace AzureServiceBusEmulator.Tests.Amqp;
+namespace AlmostServiceBus.Tests.Amqp;
 
 public class CbsRequestProcessorTests
 {
@@ -2845,21 +2845,21 @@ public class CbsRequestProcessorTests
 - [ ] **Step 2: Run test to verify it fails**
 
 ```bash
-dotnet test tests/AzureServiceBusEmulator.Tests --filter "FullyQualifiedName~CbsRequestProcessorTests" -v minimal
+dotnet test tests/AlmostServiceBus.Tests --filter "FullyQualifiedName~CbsRequestProcessorTests" -v minimal
 ```
 
 Expected: FAIL.
 
 - [ ] **Step 3: Implement CbsRequestProcessor**
 
-Create `src/AzureServiceBusEmulator.Core/Amqp/CbsRequestProcessor.cs`:
+Create `src/AlmostServiceBus.Core/Amqp/CbsRequestProcessor.cs`:
 
 ```csharp
 using Amqp;
 using Amqp.Framing;
 using Amqp.Listener;
 
-namespace AzureServiceBusEmulator.Core.Amqp;
+namespace AlmostServiceBus.Core.Amqp;
 
 public class CbsRequestProcessor : IRequestProcessor
 {
@@ -2893,7 +2893,7 @@ public class CbsRequestProcessor : IRequestProcessor
 - [ ] **Step 4: Run CBS tests**
 
 ```bash
-dotnet test tests/AzureServiceBusEmulator.Tests --filter "FullyQualifiedName~CbsRequestProcessorTests" -v minimal
+dotnet test tests/AlmostServiceBus.Tests --filter "FullyQualifiedName~CbsRequestProcessorTests" -v minimal
 ```
 
 Expected: PASS.
@@ -2910,20 +2910,20 @@ git commit -m "feat: add CBS authentication handler (accept-all)"
 ## Task 11: AMQP SenderLinkEndpoint
 
 **Files:**
-- Create: `src/AzureServiceBusEmulator.Core/Amqp/SenderLinkEndpoint.cs`
-- Create: `tests/AzureServiceBusEmulator.Tests/Amqp/SenderLinkEndpointTests.cs`
+- Create: `src/AlmostServiceBus.Core/Amqp/SenderLinkEndpoint.cs`
+- Create: `tests/AlmostServiceBus.Tests/Amqp/SenderLinkEndpointTests.cs`
 
 The `SenderLinkEndpoint` receives messages from clients (the client has a sender link, the server has a receiver endpoint). It routes messages to the appropriate queue or topic based on the link target address.
 
 - [ ] **Step 1: Write SenderLinkEndpoint tests**
 
-Create `tests/AzureServiceBusEmulator.Tests/Amqp/SenderLinkEndpointTests.cs`:
+Create `tests/AlmostServiceBus.Tests/Amqp/SenderLinkEndpointTests.cs`:
 
 ```csharp
-using AzureServiceBusEmulator.Core.Amqp;
-using AzureServiceBusEmulator.Core.Broker;
+using AlmostServiceBus.Core.Amqp;
+using AlmostServiceBus.Core.Broker;
 
-namespace AzureServiceBusEmulator.Tests.Amqp;
+namespace AlmostServiceBus.Tests.Amqp;
 
 public class SenderLinkEndpointTests
 {
@@ -2997,22 +2997,22 @@ public class SenderLinkEndpointTests
 - [ ] **Step 2: Run tests to verify they fail**
 
 ```bash
-dotnet test tests/AzureServiceBusEmulator.Tests --filter "FullyQualifiedName~SenderLinkEndpointTests" -v minimal
+dotnet test tests/AlmostServiceBus.Tests --filter "FullyQualifiedName~SenderLinkEndpointTests" -v minimal
 ```
 
 Expected: FAIL.
 
 - [ ] **Step 3: Implement SenderLinkEndpoint**
 
-Create `src/AzureServiceBusEmulator.Core/Amqp/SenderLinkEndpoint.cs`:
+Create `src/AlmostServiceBus.Core/Amqp/SenderLinkEndpoint.cs`:
 
 ```csharp
 using Amqp;
 using Amqp.Framing;
 using Amqp.Listener;
-using AzureServiceBusEmulator.Core.Broker;
+using AlmostServiceBus.Core.Broker;
 
-namespace AzureServiceBusEmulator.Core.Amqp;
+namespace AlmostServiceBus.Core.Amqp;
 
 public class SenderLinkEndpoint : LinkEndpoint
 {
@@ -3136,7 +3136,7 @@ public class SenderLinkEndpoint : LinkEndpoint
 - [ ] **Step 4: Run SenderLinkEndpoint tests**
 
 ```bash
-dotnet test tests/AzureServiceBusEmulator.Tests --filter "FullyQualifiedName~SenderLinkEndpointTests" -v minimal
+dotnet test tests/AlmostServiceBus.Tests --filter "FullyQualifiedName~SenderLinkEndpointTests" -v minimal
 ```
 
 Expected: All 4 tests PASS.
@@ -3153,18 +3153,18 @@ git commit -m "feat: add SenderLinkEndpoint for routing incoming AMQP messages"
 ## Task 12: AMQP ReceiverLinkEndpoint
 
 **Files:**
-- Create: `src/AzureServiceBusEmulator.Core/Amqp/ReceiverLinkEndpoint.cs`
-- Create: `tests/AzureServiceBusEmulator.Tests/Amqp/ReceiverLinkEndpointTests.cs`
+- Create: `src/AlmostServiceBus.Core/Amqp/ReceiverLinkEndpoint.cs`
+- Create: `tests/AlmostServiceBus.Tests/Amqp/ReceiverLinkEndpointTests.cs`
 
 - [ ] **Step 1: Write ReceiverLinkEndpoint tests**
 
-Create `tests/AzureServiceBusEmulator.Tests/Amqp/ReceiverLinkEndpointTests.cs`:
+Create `tests/AlmostServiceBus.Tests/Amqp/ReceiverLinkEndpointTests.cs`:
 
 ```csharp
-using AzureServiceBusEmulator.Core.Amqp;
-using AzureServiceBusEmulator.Core.Broker;
+using AlmostServiceBus.Core.Amqp;
+using AlmostServiceBus.Core.Broker;
 
-namespace AzureServiceBusEmulator.Tests.Amqp;
+namespace AlmostServiceBus.Tests.Amqp;
 
 public class ReceiverLinkEndpointTests
 {
@@ -3239,23 +3239,23 @@ public class ReceiverLinkEndpointTests
 - [ ] **Step 2: Run tests to verify they fail**
 
 ```bash
-dotnet test tests/AzureServiceBusEmulator.Tests --filter "FullyQualifiedName~ReceiverLinkEndpointTests" -v minimal
+dotnet test tests/AlmostServiceBus.Tests --filter "FullyQualifiedName~ReceiverLinkEndpointTests" -v minimal
 ```
 
 Expected: FAIL.
 
 - [ ] **Step 3: Implement ReceiverLinkEndpoint**
 
-Create `src/AzureServiceBusEmulator.Core/Amqp/ReceiverLinkEndpoint.cs`:
+Create `src/AlmostServiceBus.Core/Amqp/ReceiverLinkEndpoint.cs`:
 
 ```csharp
 using Amqp;
 using Amqp.Framing;
 using Amqp.Listener;
 using Amqp.Types;
-using AzureServiceBusEmulator.Core.Broker;
+using AlmostServiceBus.Core.Broker;
 
-namespace AzureServiceBusEmulator.Core.Amqp;
+namespace AlmostServiceBus.Core.Amqp;
 
 public enum SettlementOutcome
 {
@@ -3440,7 +3440,7 @@ public class ReceiverLinkEndpoint : LinkEndpoint
 - [ ] **Step 4: Run ReceiverLinkEndpoint tests**
 
 ```bash
-dotnet test tests/AzureServiceBusEmulator.Tests --filter "FullyQualifiedName~ReceiverLinkEndpointTests" -v minimal
+dotnet test tests/AlmostServiceBus.Tests --filter "FullyQualifiedName~ReceiverLinkEndpointTests" -v minimal
 ```
 
 Expected: All 4 tests PASS.
@@ -3457,22 +3457,22 @@ git commit -m "feat: add ReceiverLinkEndpoint with message pump and settlement"
 ## Task 13: AMQP ManagementLinkEndpoint and LinkProcessor
 
 **Files:**
-- Create: `src/AzureServiceBusEmulator.Core/Amqp/ManagementLinkEndpoint.cs`
-- Create: `src/AzureServiceBusEmulator.Core/Amqp/ServiceBusLinkProcessor.cs`
-- Create: `src/AzureServiceBusEmulator.Core/Amqp/AmqpServerOptions.cs`
+- Create: `src/AlmostServiceBus.Core/Amqp/ManagementLinkEndpoint.cs`
+- Create: `src/AlmostServiceBus.Core/Amqp/ServiceBusLinkProcessor.cs`
+- Create: `src/AlmostServiceBus.Core/Amqp/AmqpServerOptions.cs`
 
 - [ ] **Step 1: Implement ManagementLinkEndpoint**
 
-Create `src/AzureServiceBusEmulator.Core/Amqp/ManagementLinkEndpoint.cs`:
+Create `src/AlmostServiceBus.Core/Amqp/ManagementLinkEndpoint.cs`:
 
 ```csharp
 using Amqp;
 using Amqp.Framing;
 using Amqp.Listener;
 using Amqp.Types;
-using AzureServiceBusEmulator.Core.Broker;
+using AlmostServiceBus.Core.Broker;
 
-namespace AzureServiceBusEmulator.Core.Amqp;
+namespace AlmostServiceBus.Core.Amqp;
 
 /// <summary>
 /// Handles $management node requests (e.g., cancel-scheduled-message).
@@ -3559,10 +3559,10 @@ public class ManagementLinkEndpoint : IRequestProcessor
 
 - [ ] **Step 2: Implement AmqpServerOptions**
 
-Create `src/AzureServiceBusEmulator.Core/Amqp/AmqpServerOptions.cs`:
+Create `src/AlmostServiceBus.Core/Amqp/AmqpServerOptions.cs`:
 
 ```csharp
-namespace AzureServiceBusEmulator.Core.Amqp;
+namespace AlmostServiceBus.Core.Amqp;
 
 public class AmqpServerOptions
 {
@@ -3573,16 +3573,16 @@ public class AmqpServerOptions
 
 - [ ] **Step 3: Implement ServiceBusLinkProcessor**
 
-Create `src/AzureServiceBusEmulator.Core/Amqp/ServiceBusLinkProcessor.cs`:
+Create `src/AlmostServiceBus.Core/Amqp/ServiceBusLinkProcessor.cs`:
 
 ```csharp
 using Amqp;
 using Amqp.Framing;
 using Amqp.Listener;
 using Amqp.Types;
-using AzureServiceBusEmulator.Core.Broker;
+using AlmostServiceBus.Core.Broker;
 
-namespace AzureServiceBusEmulator.Core.Amqp;
+namespace AlmostServiceBus.Core.Amqp;
 
 public class ServiceBusLinkProcessor : ILinkProcessor
 {
@@ -3687,7 +3687,7 @@ public class ServiceBusLinkProcessor : ILinkProcessor
 - [ ] **Step 4: Verify build**
 
 ```bash
-dotnet build src/AzureServiceBusEmulator.Core
+dotnet build src/AlmostServiceBus.Core
 ```
 
 Expected: Build succeeds.
@@ -3704,18 +3704,18 @@ git commit -m "feat: add ManagementLinkEndpoint, ServiceBusLinkProcessor, and Am
 ## Task 14: AMQP Server (ContainerHost)
 
 **Files:**
-- Create: `src/AzureServiceBusEmulator.Core/Amqp/AmqpServer.cs`
+- Create: `src/AlmostServiceBus.Core/Amqp/AmqpServer.cs`
 
 - [ ] **Step 1: Implement AmqpServer**
 
-Create `src/AzureServiceBusEmulator.Core/Amqp/AmqpServer.cs`:
+Create `src/AlmostServiceBus.Core/Amqp/AmqpServer.cs`:
 
 ```csharp
 using Amqp;
 using Amqp.Listener;
-using AzureServiceBusEmulator.Core.Broker;
+using AlmostServiceBus.Core.Broker;
 
-namespace AzureServiceBusEmulator.Core.Amqp;
+namespace AlmostServiceBus.Core.Amqp;
 
 public class AmqpServer : IDisposable
 {
@@ -3758,7 +3758,7 @@ public class AmqpServer : IDisposable
 - [ ] **Step 2: Verify build**
 
 ```bash
-dotnet build src/AzureServiceBusEmulator.Core
+dotnet build src/AlmostServiceBus.Core
 ```
 
 Expected: Build succeeds.
@@ -3775,16 +3775,16 @@ git commit -m "feat: add AmqpServer wrapping ContainerHost lifecycle"
 ## Task 15: Host Program (Kestrel + AMQP)
 
 **Files:**
-- Modify: `src/AzureServiceBusEmulator.Host/Program.cs`
+- Modify: `src/AlmostServiceBus.Host/Program.cs`
 
 - [ ] **Step 1: Implement Host Program.cs**
 
-Replace `src/AzureServiceBusEmulator.Host/Program.cs` with:
+Replace `src/AlmostServiceBus.Host/Program.cs` with:
 
 ```csharp
-using AzureServiceBusEmulator.Core.Amqp;
-using AzureServiceBusEmulator.Core.Broker;
-using AzureServiceBusEmulator.Core.Management;
+using AlmostServiceBus.Core.Amqp;
+using AlmostServiceBus.Core.Broker;
+using AlmostServiceBus.Core.Management;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -3818,7 +3818,7 @@ app.Run();
 - [ ] **Step 2: Verify build**
 
 ```bash
-dotnet build src/AzureServiceBusEmulator.Host
+dotnet build src/AlmostServiceBus.Host
 ```
 
 Expected: Build succeeds.
@@ -3835,20 +3835,20 @@ git commit -m "feat: add Host startup with Kestrel REST API and AMQP listener"
 ## Task 16: TestHost Fixture
 
 **Files:**
-- Create: `src/AzureServiceBusEmulator.TestHost/ServiceBusEmulatorFixture.cs`
+- Create: `src/AlmostServiceBus.TestHost/ServiceBusEmulatorFixture.cs`
 
 - [ ] **Step 1: Implement ServiceBusEmulatorFixture**
 
-Create `src/AzureServiceBusEmulator.TestHost/ServiceBusEmulatorFixture.cs`:
+Create `src/AlmostServiceBus.TestHost/ServiceBusEmulatorFixture.cs`:
 
 ```csharp
-using AzureServiceBusEmulator.Core.Amqp;
-using AzureServiceBusEmulator.Core.Broker;
-using AzureServiceBusEmulator.Core.Management;
+using AlmostServiceBus.Core.Amqp;
+using AlmostServiceBus.Core.Broker;
+using AlmostServiceBus.Core.Management;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 
-namespace AzureServiceBusEmulator.TestHost;
+namespace AlmostServiceBus.TestHost;
 
 public class ServiceBusEmulatorFixture : IAsyncDisposable
 {
@@ -3923,7 +3923,7 @@ public class ServiceBusEmulatorFixture : IAsyncDisposable
 
 - [ ] **Step 2: Update TestHost csproj for ASP.NET Core reference**
 
-Edit `src/AzureServiceBusEmulator.TestHost/AzureServiceBusEmulator.TestHost.csproj` to add the FrameworkReference:
+Edit `src/AlmostServiceBus.TestHost/AlmostServiceBus.TestHost.csproj` to add the FrameworkReference:
 
 ```xml
 <Project Sdk="Microsoft.NET.Sdk">
@@ -3936,7 +3936,7 @@ Edit `src/AzureServiceBusEmulator.TestHost/AzureServiceBusEmulator.TestHost.cspr
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
   </ItemGroup>
   <ItemGroup>
-    <ProjectReference Include="..\AzureServiceBusEmulator.Core\AzureServiceBusEmulator.Core.csproj" />
+    <ProjectReference Include="..\AlmostServiceBus.Core\AlmostServiceBus.Core.csproj" />
   </ItemGroup>
 </Project>
 ```
@@ -3944,7 +3944,7 @@ Edit `src/AzureServiceBusEmulator.TestHost/AzureServiceBusEmulator.TestHost.cspr
 - [ ] **Step 3: Verify build**
 
 ```bash
-dotnet build src/AzureServiceBusEmulator.TestHost
+dotnet build src/AlmostServiceBus.TestHost
 ```
 
 Expected: Build succeeds.
@@ -3961,19 +3961,19 @@ git commit -m "feat: add ServiceBusEmulatorFixture for in-process test hosting"
 ## Task 17: SDK Integration Tests — Admin Client
 
 **Files:**
-- Create: `tests/AzureServiceBusEmulator.SdkIntegration.Tests/AdminClientTests.cs`
+- Create: `tests/AlmostServiceBus.SdkIntegration.Tests/AdminClientTests.cs`
 
 These tests use the real `ServiceBusAdministrationClient` against the emulator.
 
 - [ ] **Step 1: Write AdminClientTests**
 
-Create `tests/AzureServiceBusEmulator.SdkIntegration.Tests/AdminClientTests.cs`:
+Create `tests/AlmostServiceBus.SdkIntegration.Tests/AdminClientTests.cs`:
 
 ```csharp
 using Azure.Messaging.ServiceBus.Administration;
-using AzureServiceBusEmulator.TestHost;
+using AlmostServiceBus.TestHost;
 
-namespace AzureServiceBusEmulator.SdkIntegration.Tests;
+namespace AlmostServiceBus.SdkIntegration.Tests;
 
 public class AdminClientTests : IAsyncLifetime
 {
@@ -4110,7 +4110,7 @@ public class AdminClientTests : IAsyncLifetime
 - [ ] **Step 2: Run SDK integration tests**
 
 ```bash
-dotnet test tests/AzureServiceBusEmulator.SdkIntegration.Tests -v minimal
+dotnet test tests/AlmostServiceBus.SdkIntegration.Tests -v minimal
 ```
 
 Expected: All tests PASS.
@@ -4127,17 +4127,17 @@ git commit -m "feat: add SDK integration tests for REST management API"
 ## Task 18: SDK Integration Tests — Messaging (AMQP)
 
 **Files:**
-- Create: `tests/AzureServiceBusEmulator.SdkIntegration.Tests/MessagingTests.cs`
+- Create: `tests/AlmostServiceBus.SdkIntegration.Tests/MessagingTests.cs`
 
 - [ ] **Step 1: Write MessagingTests**
 
-Create `tests/AzureServiceBusEmulator.SdkIntegration.Tests/MessagingTests.cs`:
+Create `tests/AlmostServiceBus.SdkIntegration.Tests/MessagingTests.cs`:
 
 ```csharp
 using Azure.Messaging.ServiceBus;
-using AzureServiceBusEmulator.TestHost;
+using AlmostServiceBus.TestHost;
 
-namespace AzureServiceBusEmulator.SdkIntegration.Tests;
+namespace AlmostServiceBus.SdkIntegration.Tests;
 
 public class MessagingTests : IAsyncLifetime
 {
@@ -4216,7 +4216,7 @@ public class MessagingTests : IAsyncLifetime
 - [ ] **Step 2: Run messaging tests**
 
 ```bash
-dotnet test tests/AzureServiceBusEmulator.SdkIntegration.Tests --filter "FullyQualifiedName~MessagingTests" -v minimal
+dotnet test tests/AlmostServiceBus.SdkIntegration.Tests --filter "FullyQualifiedName~MessagingTests" -v minimal
 ```
 
 Expected: Tests PASS. **Note:** These tests may reveal issues with the AMQP handshake, CBS auth flow, or message format. Debug and fix as needed — this is where the most iteration will happen.
@@ -4233,16 +4233,16 @@ git commit -m "feat: add AMQP messaging integration tests with real ServiceBusCl
 ## Task 19: MassTransit Integration Tests
 
 **Files:**
-- Create: `tests/AzureServiceBusEmulator.MassTransit.Tests/MassTransitTopologyTests.cs`
-- Create: `tests/AzureServiceBusEmulator.MassTransit.Tests/MassTransitPubSubTests.cs`
-- Create: `tests/AzureServiceBusEmulator.MassTransit.Tests/TestMessages.cs`
+- Create: `tests/AlmostServiceBus.MassTransit.Tests/MassTransitTopologyTests.cs`
+- Create: `tests/AlmostServiceBus.MassTransit.Tests/MassTransitPubSubTests.cs`
+- Create: `tests/AlmostServiceBus.MassTransit.Tests/TestMessages.cs`
 
 - [ ] **Step 1: Create shared test message types**
 
-Create `tests/AzureServiceBusEmulator.MassTransit.Tests/TestMessages.cs`:
+Create `tests/AlmostServiceBus.MassTransit.Tests/TestMessages.cs`:
 
 ```csharp
-namespace AzureServiceBusEmulator.MassTransit.Tests;
+namespace AlmostServiceBus.MassTransit.Tests;
 
 public record TestEvent(string Value);
 public record TestCommand(string Value);
@@ -4252,14 +4252,14 @@ public record TestResponse(string Result);
 
 - [ ] **Step 2: Write MassTransit topology tests**
 
-Create `tests/AzureServiceBusEmulator.MassTransit.Tests/MassTransitTopologyTests.cs`:
+Create `tests/AlmostServiceBus.MassTransit.Tests/MassTransitTopologyTests.cs`:
 
 ```csharp
-using AzureServiceBusEmulator.TestHost;
+using AlmostServiceBus.TestHost;
 using MassTransit;
 using Microsoft.Extensions.DependencyInjection;
 
-namespace AzureServiceBusEmulator.MassTransit.Tests;
+namespace AlmostServiceBus.MassTransit.Tests;
 
 public class MassTransitTopologyTests : IAsyncLifetime
 {
@@ -4309,14 +4309,14 @@ public class MassTransitTopologyTests : IAsyncLifetime
 
 - [ ] **Step 3: Write MassTransit pub/sub tests**
 
-Create `tests/AzureServiceBusEmulator.MassTransit.Tests/MassTransitPubSubTests.cs`:
+Create `tests/AlmostServiceBus.MassTransit.Tests/MassTransitPubSubTests.cs`:
 
 ```csharp
-using AzureServiceBusEmulator.TestHost;
+using AlmostServiceBus.TestHost;
 using MassTransit;
 using Microsoft.Extensions.DependencyInjection;
 
-namespace AzureServiceBusEmulator.MassTransit.Tests;
+namespace AlmostServiceBus.MassTransit.Tests;
 
 public class MassTransitPubSubTests : IAsyncLifetime
 {
@@ -4357,7 +4357,7 @@ public class MassTransitPubSubTests : IAsyncLifetime
 - [ ] **Step 4: Run MassTransit tests**
 
 ```bash
-dotnet test tests/AzureServiceBusEmulator.MassTransit.Tests -v minimal
+dotnet test tests/AlmostServiceBus.MassTransit.Tests -v minimal
 ```
 
 Expected: Placeholder tests PASS. Real integration tests will be developed iteratively.
@@ -4379,7 +4379,7 @@ git commit -m "feat: add MassTransit integration test scaffolding"
 - [ ] **Step 1: Run all unit tests**
 
 ```bash
-dotnet test tests/AzureServiceBusEmulator.Tests -v minimal
+dotnet test tests/AlmostServiceBus.Tests -v minimal
 ```
 
 Expected: All tests PASS.
@@ -4387,7 +4387,7 @@ Expected: All tests PASS.
 - [ ] **Step 2: Run all integration tests**
 
 ```bash
-dotnet test tests/AzureServiceBusEmulator.SdkIntegration.Tests -v minimal
+dotnet test tests/AlmostServiceBus.SdkIntegration.Tests -v minimal
 ```
 
 Expected: All tests PASS (or identify specific failures to fix).
@@ -4395,7 +4395,7 @@ Expected: All tests PASS (or identify specific failures to fix).
 - [ ] **Step 3: Run the host standalone**
 
 ```bash
-dotnet run --project src/AzureServiceBusEmulator.Host
+dotnet run --project src/AlmostServiceBus.Host
 ```
 
 Verify output shows both AMQP and HTTP endpoints. Ctrl+C to stop.
@@ -4403,7 +4403,7 @@ Verify output shows both AMQP and HTTP endpoints. Ctrl+C to stop.
 - [ ] **Step 4: Run full solution build**
 
 ```bash
-dotnet build AzureServiceBusEmulator.sln --configuration Release
+dotnet build AlmostServiceBus.sln --configuration Release
 ```
 
 Expected: Build succeeds with 0 errors, 0 warnings.
@@ -4411,7 +4411,7 @@ Expected: Build succeeds with 0 errors, 0 warnings.
 - [ ] **Step 5: Run all tests in solution**
 
 ```bash
-dotnet test AzureServiceBusEmulator.sln -v minimal
+dotnet test AlmostServiceBus.sln -v minimal
 ```
 
 Expected: All tests PASS.

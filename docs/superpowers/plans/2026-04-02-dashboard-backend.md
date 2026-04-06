@@ -15,8 +15,8 @@
 ### Task 1: Broker instrumentation — namespace listing and message counts
 
 **Files:**
-- Modify: `src/AzureServiceBusEmulator.Core/Broker/NamespaceRegistry.cs`
-- Modify: `src/AzureServiceBusEmulator.Core/Broker/QueueEntity.cs`
+- Modify: `src/AlmostServiceBus.Core/Broker/NamespaceRegistry.cs`
+- Modify: `src/AlmostServiceBus.Core/Broker/QueueEntity.cs`
 
 The dashboard needs to list namespaces and get message counts. Currently `NamespaceRegistry` has no `ListNamespaces()` and `QueueEntity` has no count tracking (Channel\<T\> doesn't expose count).
 
@@ -94,14 +94,14 @@ public IReadOnlyList<BrokeredMessage> PeekMessages(int maxCount = 50)
 
 - [ ] **Step 4: Run existing tests to verify no regressions**
 
-Run: `dotnet test AzureServiceBusEmulator.sln --verbosity quiet`
+Run: `dotnet test AlmostServiceBus.sln --verbosity quiet`
 
 Expected: All 148 tests pass.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add src/AzureServiceBusEmulator.Core/Broker/NamespaceRegistry.cs src/AzureServiceBusEmulator.Core/Broker/QueueEntity.cs
+git add src/AlmostServiceBus.Core/Broker/NamespaceRegistry.cs src/AlmostServiceBus.Core/Broker/QueueEntity.cs
 git commit -m "feat: add namespace listing, message counts, and peek to broker"
 ```
 
@@ -110,18 +110,18 @@ git commit -m "feat: add namespace listing, message counts, and peek to broker"
 ### Task 2: Message event bus for SSE
 
 **Files:**
-- Create: `src/AzureServiceBusEmulator.Core/Broker/MessageEventBus.cs`
-- Modify: `src/AzureServiceBusEmulator.Core/Broker/QueueEntity.cs`
+- Create: `src/AlmostServiceBus.Core/Broker/MessageEventBus.cs`
+- Modify: `src/AlmostServiceBus.Core/Broker/QueueEntity.cs`
 
 A pub/sub event bus that the broker publishes to when messages are enqueued, completed, or dead-lettered. The SSE endpoint subscribes to this bus.
 
 - [ ] **Step 1: Create MessageEventBus**
 
 ```csharp
-// src/AzureServiceBusEmulator.Core/Broker/MessageEventBus.cs
+// src/AlmostServiceBus.Core/Broker/MessageEventBus.cs
 using System.Threading.Channels;
 
-namespace AzureServiceBusEmulator.Core.Broker;
+namespace AlmostServiceBus.Core.Broker;
 
 public enum MessageEventType
 {
@@ -267,7 +267,7 @@ private readonly MessageEventBus? _eventBus;
 
 - [ ] **Step 4: Run tests**
 
-Run: `dotnet test AzureServiceBusEmulator.sln --verbosity quiet`
+Run: `dotnet test AlmostServiceBus.sln --verbosity quiet`
 
 Expected: All tests pass. Existing code creates `NamespaceRegistry()` with no args which defaults event bus to null.
 
@@ -283,16 +283,16 @@ git commit -m "feat: add MessageEventBus for real-time dashboard events"
 ### Task 3: Dashboard JSON API endpoints
 
 **Files:**
-- Create: `src/AzureServiceBusEmulator.Core/Dashboard/DashboardApiEndpoints.cs`
-- Create: `src/AzureServiceBusEmulator.Core/Dashboard/DashboardModels.cs`
+- Create: `src/AlmostServiceBus.Core/Dashboard/DashboardApiEndpoints.cs`
+- Create: `src/AlmostServiceBus.Core/Dashboard/DashboardModels.cs`
 
 REST endpoints under `/api/dashboard/` that return JSON. These read from the broker's in-memory state.
 
 - [ ] **Step 1: Create response models**
 
 ```csharp
-// src/AzureServiceBusEmulator.Core/Dashboard/DashboardModels.cs
-namespace AzureServiceBusEmulator.Core.Dashboard;
+// src/AlmostServiceBus.Core/Dashboard/DashboardModels.cs
+namespace AlmostServiceBus.Core.Dashboard;
 
 public record NamespaceInfo(string Name, int QueueCount, int TopicCount);
 
@@ -333,13 +333,13 @@ public record MessageInfo(
 - [ ] **Step 2: Create DashboardApiEndpoints**
 
 ```csharp
-// src/AzureServiceBusEmulator.Core/Dashboard/DashboardApiEndpoints.cs
+// src/AlmostServiceBus.Core/Dashboard/DashboardApiEndpoints.cs
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
-using AzureServiceBusEmulator.Core.Broker;
+using AlmostServiceBus.Core.Broker;
 
-namespace AzureServiceBusEmulator.Core.Dashboard;
+namespace AlmostServiceBus.Core.Dashboard;
 
 public static class DashboardApiEndpoints
 {
@@ -466,7 +466,7 @@ public static class DashboardApiEndpoints
 
 - [ ] **Step 3: Run tests**
 
-Run: `dotnet test AzureServiceBusEmulator.sln --verbosity quiet`
+Run: `dotnet test AlmostServiceBus.sln --verbosity quiet`
 
 Expected: All tests pass.
 
@@ -482,21 +482,21 @@ git commit -m "feat: add dashboard JSON API endpoints"
 ### Task 4: SSE endpoint for real-time events
 
 **Files:**
-- Create: `src/AzureServiceBusEmulator.Core/Dashboard/DashboardSseEndpoint.cs`
+- Create: `src/AlmostServiceBus.Core/Dashboard/DashboardSseEndpoint.cs`
 
 SSE endpoint at `/api/dashboard/events` that streams `MessageEvent` objects as `text/event-stream`. Client can filter by namespace and entity via query params.
 
 - [ ] **Step 1: Create SSE endpoint**
 
 ```csharp
-// src/AzureServiceBusEmulator.Core/Dashboard/DashboardSseEndpoint.cs
+// src/AlmostServiceBus.Core/Dashboard/DashboardSseEndpoint.cs
 using System.Text.Json;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
-using AzureServiceBusEmulator.Core.Broker;
+using AlmostServiceBus.Core.Broker;
 
-namespace AzureServiceBusEmulator.Core.Dashboard;
+namespace AlmostServiceBus.Core.Dashboard;
 
 public static class DashboardSseEndpoint
 {
@@ -556,8 +556,8 @@ git commit -m "feat: add SSE endpoint for real-time dashboard events"
 ### Task 5: Wire up dashboard API in Host and TestHost
 
 **Files:**
-- Modify: `src/AzureServiceBusEmulator.Host/Program.cs`
-- Modify: `src/AzureServiceBusEmulator.TestHost/ServiceBusEmulatorFixture.cs`
+- Modify: `src/AlmostServiceBus.Host/Program.cs`
+- Modify: `src/AlmostServiceBus.TestHost/ServiceBusEmulatorFixture.cs`
 
 Register the dashboard endpoints and the message event bus in both the standalone host and the test fixture.
 
@@ -579,7 +579,7 @@ var registry = new NamespaceRegistry(eventBus);
 
 Add using:
 ```csharp
-using AzureServiceBusEmulator.Core.Dashboard;
+using AlmostServiceBus.Core.Dashboard;
 ```
 
 - [ ] **Step 2: Update TestHost fixture similarly**
@@ -600,7 +600,7 @@ app.UseCors(policy => policy
 
 - [ ] **Step 4: Run full test suite**
 
-Run: `dotnet test AzureServiceBusEmulator.sln --verbosity quiet`
+Run: `dotnet test AlmostServiceBus.sln --verbosity quiet`
 
 Expected: All tests pass.
 
@@ -617,7 +617,7 @@ git commit -m "feat: wire up dashboard API and SSE in Host and TestHost"
 
 - [ ] **Step 1: Start the emulator**
 
-Run: `dotnet run --project src/AzureServiceBusEmulator.Host`
+Run: `dotnet run --project src/AlmostServiceBus.Host`
 
 - [ ] **Step 2: Create some entities via curl**
 

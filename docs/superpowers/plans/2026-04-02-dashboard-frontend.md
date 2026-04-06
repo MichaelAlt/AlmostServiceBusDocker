@@ -17,14 +17,14 @@
 ### Task 1: Scaffold Vue project
 
 **Files:**
-- Create: `src/AzureServiceBusEmulator.Dashboard/` (entire directory)
+- Create: `src/AlmostServiceBus.Dashboard/` (entire directory)
 
 - [ ] **Step 1: Create Vue project with Vite**
 
 ```bash
 cd src
-npm create vue@latest AzureServiceBusEmulator.Dashboard -- --typescript --router=false --pinia=false --vitest=false --e2e=false --eslint=false --prettier=false
-cd AzureServiceBusEmulator.Dashboard
+npm create vue@latest AlmostServiceBus.Dashboard -- --typescript --router=false --pinia=false --vitest=false --e2e=false --eslint=false --prettier=false
+cd AlmostServiceBus.Dashboard
 npm install
 ```
 
@@ -35,7 +35,7 @@ Remove the default App.vue content, HelloWorld component, and asset files. Keep 
 - [ ] **Step 3: Configure Vite for proxy to emulator API**
 
 ```typescript
-// src/AzureServiceBusEmulator.Dashboard/vite.config.ts
+// src/AlmostServiceBus.Dashboard/vite.config.ts
 import { defineConfig } from 'vite'
 import vue from '@vitejs/plugin-vue'
 
@@ -50,7 +50,7 @@ export default defineConfig({
     },
   },
   build: {
-    outDir: '../AzureServiceBusEmulator.Host/wwwroot',
+    outDir: '../AlmostServiceBus.Host/wwwroot',
     emptyOutDir: true,
   },
 })
@@ -65,7 +65,7 @@ Expected: Vite dev server starts on localhost:5173.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add src/AzureServiceBusEmulator.Dashboard/
+git add src/AlmostServiceBus.Dashboard/
 git commit -m "feat: scaffold Vue dashboard project"
 ```
 
@@ -74,14 +74,14 @@ git commit -m "feat: scaffold Vue dashboard project"
 ### Task 2: TypeScript types and API client
 
 **Files:**
-- Create: `src/AzureServiceBusEmulator.Dashboard/src/types/index.ts`
-- Create: `src/AzureServiceBusEmulator.Dashboard/src/api/client.ts`
-- Create: `src/AzureServiceBusEmulator.Dashboard/src/api/sse.ts`
+- Create: `src/AlmostServiceBus.Dashboard/src/types/index.ts`
+- Create: `src/AlmostServiceBus.Dashboard/src/api/client.ts`
+- Create: `src/AlmostServiceBus.Dashboard/src/api/sse.ts`
 
 - [ ] **Step 1: Define TypeScript interfaces**
 
 ```typescript
-// src/AzureServiceBusEmulator.Dashboard/src/types/index.ts
+// src/AlmostServiceBus.Dashboard/src/types/index.ts
 
 export interface NamespaceInfo {
   name: string
@@ -150,7 +150,7 @@ export interface EntityGroup {
 - [ ] **Step 2: Create API client**
 
 ```typescript
-// src/AzureServiceBusEmulator.Dashboard/src/api/client.ts
+// src/AlmostServiceBus.Dashboard/src/api/client.ts
 import type { NamespaceInfo, EntityOverview, MessageInfo } from '../types'
 
 const BASE = '/api/dashboard'
@@ -188,7 +188,7 @@ export const api = {
 - [ ] **Step 3: Create SSE client**
 
 ```typescript
-// src/AzureServiceBusEmulator.Dashboard/src/api/sse.ts
+// src/AlmostServiceBus.Dashboard/src/api/sse.ts
 import type { MessageEvent as MsgEvent } from '../types'
 
 export function connectSse(
@@ -226,13 +226,13 @@ git commit -m "feat: add TypeScript types, API client, and SSE client"
 ### Task 3: App shell — three-panel layout
 
 **Files:**
-- Modify: `src/AzureServiceBusEmulator.Dashboard/src/App.vue`
-- Create: `src/AzureServiceBusEmulator.Dashboard/src/style.css`
+- Modify: `src/AlmostServiceBus.Dashboard/src/App.vue`
+- Create: `src/AlmostServiceBus.Dashboard/src/style.css`
 
 - [ ] **Step 1: Create global styles (dark theme)**
 
 ```css
-/* src/AzureServiceBusEmulator.Dashboard/src/style.css */
+/* src/AlmostServiceBus.Dashboard/src/style.css */
 :root {
   --bg-base: #1e1e2e;
   --bg-mantle: #181825;
@@ -272,7 +272,7 @@ button {
 - [ ] **Step 2: Create App shell**
 
 ```vue
-<!-- src/AzureServiceBusEmulator.Dashboard/src/App.vue -->
+<!-- src/AlmostServiceBus.Dashboard/src/App.vue -->
 <script setup lang="ts">
 import { ref } from 'vue'
 import type { MessageInfo } from './types'
@@ -349,16 +349,16 @@ git commit -m "feat: add three-panel app shell with dark theme"
 ### Task 4: EntityTree component (left panel)
 
 **Files:**
-- Create: `src/AzureServiceBusEmulator.Dashboard/src/components/EntityTree.vue`
-- Create: `src/AzureServiceBusEmulator.Dashboard/src/components/NamespaceTabs.vue`
-- Create: `src/AzureServiceBusEmulator.Dashboard/src/composables/useEntities.ts`
+- Create: `src/AlmostServiceBus.Dashboard/src/components/EntityTree.vue`
+- Create: `src/AlmostServiceBus.Dashboard/src/components/NamespaceTabs.vue`
+- Create: `src/AlmostServiceBus.Dashboard/src/composables/useEntities.ts`
 
 - [ ] **Step 1: Create useEntities composable**
 
 Handles fetching entities, polling for updates, and grouping topics by common namespace prefix.
 
 ```typescript
-// src/AzureServiceBusEmulator.Dashboard/src/composables/useEntities.ts
+// src/AlmostServiceBus.Dashboard/src/composables/useEntities.ts
 import { ref, computed, watch } from 'vue'
 import type { EntityOverview, QueueInfo, TopicInfo, EntityGroup, NamespaceInfo } from '../types'
 import { api } from '../api/client'
@@ -418,7 +418,7 @@ export function useEntities(selectedNamespace: () => string) {
 - [ ] **Step 2: Create NamespaceTabs component**
 
 ```vue
-<!-- src/AzureServiceBusEmulator.Dashboard/src/components/NamespaceTabs.vue -->
+<!-- src/AlmostServiceBus.Dashboard/src/components/NamespaceTabs.vue -->
 <script setup lang="ts">
 import type { NamespaceInfo } from '../types'
 
@@ -452,7 +452,7 @@ const emit = defineEmits<{ 'update:selected': [value: string] }>()
 The full left panel: namespace tabs, search filter, grouped topic tree with queues section.
 
 ```vue
-<!-- src/AzureServiceBusEmulator.Dashboard/src/components/EntityTree.vue -->
+<!-- src/AlmostServiceBus.Dashboard/src/components/EntityTree.vue -->
 <script setup lang="ts">
 import { onMounted, onUnmounted, toRef } from 'vue'
 import NamespaceTabs from './NamespaceTabs.vue'
@@ -572,16 +572,16 @@ git commit -m "feat: add EntityTree with namespace tabs and topic grouping"
 ### Task 5: MessageList component (middle panel)
 
 **Files:**
-- Create: `src/AzureServiceBusEmulator.Dashboard/src/components/MessageList.vue`
-- Create: `src/AzureServiceBusEmulator.Dashboard/src/components/MessageRow.vue`
-- Create: `src/AzureServiceBusEmulator.Dashboard/src/composables/useMessages.ts`
+- Create: `src/AlmostServiceBus.Dashboard/src/components/MessageList.vue`
+- Create: `src/AlmostServiceBus.Dashboard/src/components/MessageRow.vue`
+- Create: `src/AlmostServiceBus.Dashboard/src/composables/useMessages.ts`
 
 - [ ] **Step 1: Create useMessages composable**
 
 Fetches messages for the selected entity and integrates SSE for real-time updates.
 
 ```typescript
-// src/AzureServiceBusEmulator.Dashboard/src/composables/useMessages.ts
+// src/AlmostServiceBus.Dashboard/src/composables/useMessages.ts
 import { ref, watch, onUnmounted } from 'vue'
 import type { MessageInfo, MessageEvent } from '../types'
 import { api } from '../api/client'
@@ -642,7 +642,7 @@ export function useMessages(ns: () => string, entity: () => string | null) {
 - [ ] **Step 2: Create MessageRow component**
 
 ```vue
-<!-- src/AzureServiceBusEmulator.Dashboard/src/components/MessageRow.vue -->
+<!-- src/AlmostServiceBus.Dashboard/src/components/MessageRow.vue -->
 <script setup lang="ts">
 import type { MessageInfo } from '../types'
 
@@ -690,7 +690,7 @@ function timeAgo(iso: string): string {
 - [ ] **Step 3: Create MessageList component**
 
 ```vue
-<!-- src/AzureServiceBusEmulator.Dashboard/src/components/MessageList.vue -->
+<!-- src/AlmostServiceBus.Dashboard/src/components/MessageList.vue -->
 <script setup lang="ts">
 import { watch, onMounted, onUnmounted } from 'vue'
 import type { MessageInfo } from '../types'
@@ -789,15 +789,15 @@ git commit -m "feat: add MessageList with SSE integration and scalar tags"
 ### Task 6: MessageDetail component (right panel)
 
 **Files:**
-- Create: `src/AzureServiceBusEmulator.Dashboard/src/components/MessageDetail.vue`
-- Create: `src/AzureServiceBusEmulator.Dashboard/src/components/JsonViewer.vue`
+- Create: `src/AlmostServiceBus.Dashboard/src/components/MessageDetail.vue`
+- Create: `src/AlmostServiceBus.Dashboard/src/components/JsonViewer.vue`
 
 - [ ] **Step 1: Create JsonViewer component**
 
 Simple syntax-highlighted JSON display.
 
 ```vue
-<!-- src/AzureServiceBusEmulator.Dashboard/src/components/JsonViewer.vue -->
+<!-- src/AlmostServiceBus.Dashboard/src/components/JsonViewer.vue -->
 <script setup lang="ts">
 import { computed } from 'vue'
 
@@ -832,7 +832,7 @@ const formatted = computed(() => {
 - [ ] **Step 2: Create MessageDetail component**
 
 ```vue
-<!-- src/AzureServiceBusEmulator.Dashboard/src/components/MessageDetail.vue -->
+<!-- src/AlmostServiceBus.Dashboard/src/components/MessageDetail.vue -->
 <script setup lang="ts">
 import { ref } from 'vue'
 import type { MessageInfo } from '../types'
@@ -959,15 +959,15 @@ git commit -m "feat: add MessageDetail panel with JSON viewer and property tabs"
 ### Task 7: Vite.AspNetCore integration
 
 **Files:**
-- Modify: `src/AzureServiceBusEmulator.Host/AzureServiceBusEmulator.Host.csproj`
-- Modify: `src/AzureServiceBusEmulator.Host/Program.cs`
+- Modify: `src/AlmostServiceBus.Host/AlmostServiceBus.Host.csproj`
+- Modify: `src/AlmostServiceBus.Host/Program.cs`
 
 Wire the Vue app into the Kestrel host so it's served from the same origin.
 
 - [ ] **Step 1: Add Vite.AspNetCore NuGet package**
 
 ```bash
-cd src/AzureServiceBusEmulator.Host
+cd src/AlmostServiceBus.Host
 dotnet add package Vite.AspNetCore
 ```
 
@@ -993,7 +993,7 @@ Add to `appsettings.Development.json`:
 ```json
 {
   "Vite": {
-    "PackageDirectory": "../AzureServiceBusEmulator.Dashboard",
+    "PackageDirectory": "../AlmostServiceBus.Dashboard",
     "Server": {
       "AutoRun": true,
       "Port": 5173
@@ -1005,15 +1005,15 @@ Add to `appsettings.Development.json`:
 - [ ] **Step 3: Build Vue app for production**
 
 ```bash
-cd src/AzureServiceBusEmulator.Dashboard
+cd src/AlmostServiceBus.Dashboard
 npm run build
 ```
 
-Expected: Built files appear in `src/AzureServiceBusEmulator.Host/wwwroot/`.
+Expected: Built files appear in `src/AlmostServiceBus.Host/wwwroot/`.
 
 - [ ] **Step 4: Verify dashboard loads from emulator**
 
-Start the emulator: `dotnet run --project src/AzureServiceBusEmulator.Host`
+Start the emulator: `dotnet run --project src/AlmostServiceBus.Host`
 
 Open `http://localhost:{HTTP_PORT}` — should show the dashboard.
 

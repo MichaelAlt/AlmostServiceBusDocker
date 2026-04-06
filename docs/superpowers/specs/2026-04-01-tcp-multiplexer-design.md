@@ -63,7 +63,7 @@ Endpoint=sb://localhost:5672;SharedAccessKeyName=RootManageSharedAccessKey;Share
 
 ## TCP Multiplexer Component
 
-New class: `AzureServiceBusEmulator.Core.Hosting.TcpMultiplexer`
+New class: `AlmostServiceBus.Core.Hosting.TcpMultiplexer`
 
 ### Responsibilities
 

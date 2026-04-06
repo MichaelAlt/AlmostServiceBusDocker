@@ -15,8 +15,8 @@
 ### Task 1: TcpMultiplexer — Core proxy class
 
 **Files:**
-- Create: `src/AzureServiceBusEmulator.Core/Hosting/TcpMultiplexer.cs`
-- Test: `tests/AzureServiceBusEmulator.Tests/Hosting/TcpMultiplexerTests.cs`
+- Create: `src/AlmostServiceBus.Core/Hosting/TcpMultiplexer.cs`
+- Test: `tests/AlmostServiceBus.Tests/Hosting/TcpMultiplexerTests.cs`
 
 This is the core component. It listens on a port, peeks the first byte, and proxies the full TCP stream to one of two backend ports.
 
@@ -25,13 +25,13 @@ This is the core component. It listens on a port, peeks the first byte, and prox
 Create the test file with a test that starts a simple TCP echo server on an internal port, starts the multiplexer, connects with a byte stream starting with `0x41`, and verifies the connection is proxied to the correct backend.
 
 ```csharp
-// tests/AzureServiceBusEmulator.Tests/Hosting/TcpMultiplexerTests.cs
+// tests/AlmostServiceBus.Tests/Hosting/TcpMultiplexerTests.cs
 using System.Net;
 using System.Net.Sockets;
 using System.Text;
-using AzureServiceBusEmulator.Core.Hosting;
+using AlmostServiceBus.Core.Hosting;
 
-namespace AzureServiceBusEmulator.Tests.Hosting;
+namespace AlmostServiceBus.Tests.Hosting;
 
 public class TcpMultiplexerTests : IAsyncDisposable
 {
@@ -184,18 +184,18 @@ public class TcpMultiplexerTests : IAsyncDisposable
 
 - [ ] **Step 2: Run tests to verify they fail**
 
-Run: `dotnet test tests/AzureServiceBusEmulator.Tests --filter "FullyQualifiedName~TcpMultiplexerTests" --no-build 2>&1 || true`
+Run: `dotnet test tests/AlmostServiceBus.Tests --filter "FullyQualifiedName~TcpMultiplexerTests" --no-build 2>&1 || true`
 
 Expected: Build failure — `TcpMultiplexer` class does not exist.
 
 - [ ] **Step 3: Implement TcpMultiplexer**
 
 ```csharp
-// src/AzureServiceBusEmulator.Core/Hosting/TcpMultiplexer.cs
+// src/AlmostServiceBus.Core/Hosting/TcpMultiplexer.cs
 using System.Net;
 using System.Net.Sockets;
 
-namespace AzureServiceBusEmulator.Core.Hosting;
+namespace AlmostServiceBus.Core.Hosting;
 
 /// <summary>
 /// Listens on a single public port and routes connections to either the AMQP backend
@@ -301,14 +301,14 @@ public class TcpMultiplexer
 
 - [ ] **Step 4: Run tests to verify they pass**
 
-Run: `dotnet test tests/AzureServiceBusEmulator.Tests --filter "FullyQualifiedName~TcpMultiplexerTests" -v normal`
+Run: `dotnet test tests/AlmostServiceBus.Tests --filter "FullyQualifiedName~TcpMultiplexerTests" -v normal`
 
 Expected: All 3 tests pass.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add src/AzureServiceBusEmulator.Core/Hosting/TcpMultiplexer.cs tests/AzureServiceBusEmulator.Tests/Hosting/TcpMultiplexerTests.cs
+git add src/AlmostServiceBus.Core/Hosting/TcpMultiplexer.cs tests/AlmostServiceBus.Tests/Hosting/TcpMultiplexerTests.cs
 git commit -m "feat: add TcpMultiplexer for single-port AMQP/HTTPS routing"
 ```
 
@@ -317,8 +317,8 @@ git commit -m "feat: add TcpMultiplexer for single-port AMQP/HTTPS routing"
 ### Task 2: Configure Kestrel with HTTPS using ASP.NET dev cert
 
 **Files:**
-- Modify: `src/AzureServiceBusEmulator.TestHost/ServiceBusEmulatorFixture.cs`
-- Test: `tests/AzureServiceBusEmulator.Tests/Hosting/TcpMultiplexerTests.cs` (add integration test)
+- Modify: `src/AlmostServiceBus.TestHost/ServiceBusEmulatorFixture.cs`
+- Test: `tests/AlmostServiceBus.Tests/Hosting/TcpMultiplexerTests.cs` (add integration test)
 
 Switch Kestrel from plain HTTP to HTTPS using the ASP.NET dev cert, and wire up the multiplexer in the test fixture.
 
@@ -327,7 +327,7 @@ Switch Kestrel from plain HTTP to HTTPS using the ASP.NET dev cert, and wire up 
 Add a test to the existing `TcpMultiplexerTests` that verifies a real HTTPS request gets proxied through the multiplexer to a Kestrel HTTPS backend.
 
 ```csharp
-// Add to tests/AzureServiceBusEmulator.Tests/Hosting/TcpMultiplexerTests.cs
+// Add to tests/AlmostServiceBus.Tests/Hosting/TcpMultiplexerTests.cs
 
 [Fact]
 public async Task Routes_RealHttps_ToKestrelBackend()
@@ -385,7 +385,7 @@ using Microsoft.Extensions.Logging;
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `dotnet test tests/AzureServiceBusEmulator.Tests --filter "FullyQualifiedName~Routes_RealHttps" -v normal`
+Run: `dotnet test tests/AlmostServiceBus.Tests --filter "FullyQualifiedName~Routes_RealHttps" -v normal`
 
 Expected: PASS (if dev cert is installed) or a clear TLS/cert error if not. This test validates the multiplexer correctly forwards TLS connections.
 
@@ -394,16 +394,16 @@ Expected: PASS (if dev cert is installed) or a clear TLS/cert error if not. This
 Replace the fixture's startup to allocate 3 ports, configure Kestrel with HTTPS, and start the multiplexer.
 
 ```csharp
-// src/AzureServiceBusEmulator.TestHost/ServiceBusEmulatorFixture.cs
-using AzureServiceBusEmulator.Core.Amqp;
-using AzureServiceBusEmulator.Core.Broker;
-using AzureServiceBusEmulator.Core.Hosting;
-using AzureServiceBusEmulator.Core.Management;
+// src/AlmostServiceBus.TestHost/ServiceBusEmulatorFixture.cs
+using AlmostServiceBus.Core.Amqp;
+using AlmostServiceBus.Core.Broker;
+using AlmostServiceBus.Core.Hosting;
+using AlmostServiceBus.Core.Management;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.Extensions.Logging;
 
-namespace AzureServiceBusEmulator.TestHost;
+namespace AlmostServiceBus.TestHost;
 
 public class ServiceBusEmulatorFixture : IAsyncDisposable
 {
@@ -493,14 +493,14 @@ public class ServiceBusEmulatorFixture : IAsyncDisposable
 
 - [ ] **Step 4: Run existing tests to check nothing broke**
 
-Run: `dotnet test tests/AzureServiceBusEmulator.Tests -v normal`
+Run: `dotnet test tests/AlmostServiceBus.Tests -v normal`
 
 Expected: All tests pass. The unit tests don't go through the fixture, so they should be unaffected.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add src/AzureServiceBusEmulator.TestHost/ServiceBusEmulatorFixture.cs tests/AzureServiceBusEmulator.Tests/Hosting/TcpMultiplexerTests.cs
+git add src/AlmostServiceBus.TestHost/ServiceBusEmulatorFixture.cs tests/AlmostServiceBus.Tests/Hosting/TcpMultiplexerTests.cs
 git commit -m "feat: wire up HTTPS Kestrel and TcpMultiplexer in test fixture"
 ```
 
@@ -509,8 +509,8 @@ git commit -m "feat: wire up HTTPS Kestrel and TcpMultiplexer in test fixture"
 ### Task 3: Update MassTransit tests to use plain connection string
 
 **Files:**
-- Modify: `tests/AzureServiceBusEmulator.MassTransit.Tests/MassTransitTopologyTests.cs`
-- Modify: `tests/AzureServiceBusEmulator.MassTransit.Tests/MassTransitPubSubTests.cs`
+- Modify: `tests/AlmostServiceBus.MassTransit.Tests/MassTransitTopologyTests.cs`
+- Modify: `tests/AlmostServiceBus.MassTransit.Tests/MassTransitPubSubTests.cs`
 
 Remove `LocalRedirectTransport` usage. The admin client should now work with just the connection string, since HTTPS goes through the multiplexer to Kestrel.
 
@@ -519,7 +519,7 @@ Remove `LocalRedirectTransport` usage. The admin client should now work with jus
 Replace the `InitializeAsync` method to use a plain `ServiceBusAdministrationClient` with no custom transport. Add a handler to bypass dev cert validation.
 
 ```csharp
-// tests/AzureServiceBusEmulator.MassTransit.Tests/MassTransitTopologyTests.cs
+// tests/AlmostServiceBus.MassTransit.Tests/MassTransitTopologyTests.cs
 // Replace the InitializeAsync method (lines 27-39):
 
 public async Task InitializeAsync()
@@ -550,7 +550,7 @@ using Azure.Core.Pipeline;
 Same change — replace `LocalRedirectTransport` with the cert-bypassing transport.
 
 ```csharp
-// tests/AzureServiceBusEmulator.MassTransit.Tests/MassTransitPubSubTests.cs
+// tests/AlmostServiceBus.MassTransit.Tests/MassTransitPubSubTests.cs
 // Replace the InitializeAsync method (lines 32-39):
 
 public async Task InitializeAsync()
@@ -579,7 +579,7 @@ using Azure.Core.Pipeline;
 Update the `OpenAmqpConnectionAsync` method to use the public port through the multiplexer:
 
 ```csharp
-// tests/AzureServiceBusEmulator.MassTransit.Tests/MassTransitPubSubTests.cs
+// tests/AlmostServiceBus.MassTransit.Tests/MassTransitPubSubTests.cs
 // Replace the OpenAmqpConnectionAsync method (lines 47-51):
 
 private async Task<Connection> OpenAmqpConnectionAsync()
@@ -591,20 +591,20 @@ private async Task<Connection> OpenAmqpConnectionAsync()
 
 - [ ] **Step 3: Run MassTransit topology tests**
 
-Run: `dotnet test tests/AzureServiceBusEmulator.MassTransit.Tests --filter "FullyQualifiedName~TopologyTests" -v normal`
+Run: `dotnet test tests/AlmostServiceBus.MassTransit.Tests --filter "FullyQualifiedName~TopologyTests" -v normal`
 
 Expected: All topology tests pass — admin client creates entities over HTTPS through the multiplexer.
 
 - [ ] **Step 4: Run MassTransit pub/sub tests**
 
-Run: `dotnet test tests/AzureServiceBusEmulator.MassTransit.Tests --filter "FullyQualifiedName~PubSubTests" -v normal`
+Run: `dotnet test tests/AlmostServiceBus.MassTransit.Tests --filter "FullyQualifiedName~PubSubTests" -v normal`
 
 Expected: All pub/sub tests pass — AMQP messaging goes through the multiplexer, admin calls go through HTTPS.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add tests/AzureServiceBusEmulator.MassTransit.Tests/MassTransitTopologyTests.cs tests/AzureServiceBusEmulator.MassTransit.Tests/MassTransitPubSubTests.cs
+git add tests/AlmostServiceBus.MassTransit.Tests/MassTransitTopologyTests.cs tests/AlmostServiceBus.MassTransit.Tests/MassTransitPubSubTests.cs
 git commit -m "refactor: remove LocalRedirectTransport from MassTransit tests, use plain connection string"
 ```
 
@@ -613,8 +613,8 @@ git commit -m "refactor: remove LocalRedirectTransport from MassTransit tests, u
 ### Task 4: Update SDK integration tests
 
 **Files:**
-- Modify: `tests/AzureServiceBusEmulator.SdkIntegration.Tests/AdminClientTests.cs`
-- Modify: `tests/AzureServiceBusEmulator.SdkIntegration.Tests/MessagingTests.cs`
+- Modify: `tests/AlmostServiceBus.SdkIntegration.Tests/AdminClientTests.cs`
+- Modify: `tests/AlmostServiceBus.SdkIntegration.Tests/MessagingTests.cs`
 
 Switch `AdminClientTests` from raw `HttpClient` to `ServiceBusAdministrationClient` with a plain connection string. Update `MessagingTests` to use the public port.
 
@@ -623,12 +623,12 @@ Switch `AdminClientTests` from raw `HttpClient` to `ServiceBusAdministrationClie
 Replace the raw HTTP approach with the real Azure SDK admin client, proving the emulator is now transparent.
 
 ```csharp
-// tests/AzureServiceBusEmulator.SdkIntegration.Tests/AdminClientTests.cs
+// tests/AlmostServiceBus.SdkIntegration.Tests/AdminClientTests.cs
 using Azure.Core.Pipeline;
 using Azure.Messaging.ServiceBus.Administration;
-using AzureServiceBusEmulator.TestHost;
+using AlmostServiceBus.TestHost;
 
-namespace AzureServiceBusEmulator.SdkIntegration.Tests;
+namespace AlmostServiceBus.SdkIntegration.Tests;
 
 public class AdminClientTests : IAsyncLifetime
 {
@@ -738,7 +738,7 @@ public class AdminClientTests : IAsyncLifetime
 Change `OpenConnectionAsync` to connect through the multiplexer's public port.
 
 ```csharp
-// tests/AzureServiceBusEmulator.SdkIntegration.Tests/MessagingTests.cs
+// tests/AlmostServiceBus.SdkIntegration.Tests/MessagingTests.cs
 // Replace the OpenConnectionAsync method (lines 21-25):
 
 private async Task<Connection> OpenConnectionAsync()
@@ -750,14 +750,14 @@ private async Task<Connection> OpenConnectionAsync()
 
 - [ ] **Step 3: Run SDK integration tests**
 
-Run: `dotnet test tests/AzureServiceBusEmulator.SdkIntegration.Tests -v normal`
+Run: `dotnet test tests/AlmostServiceBus.SdkIntegration.Tests -v normal`
 
 Expected: All tests pass — admin operations go through HTTPS via the multiplexer, AMQP messaging goes through the multiplexer.
 
 - [ ] **Step 4: Commit**
 
 ```bash
-git add tests/AzureServiceBusEmulator.SdkIntegration.Tests/AdminClientTests.cs tests/AzureServiceBusEmulator.SdkIntegration.Tests/MessagingTests.cs
+git add tests/AlmostServiceBus.SdkIntegration.Tests/AdminClientTests.cs tests/AlmostServiceBus.SdkIntegration.Tests/MessagingTests.cs
 git commit -m "refactor: switch SDK integration tests to use multiplexer, plain connection string"
 ```
 
@@ -766,18 +766,18 @@ git commit -m "refactor: switch SDK integration tests to use multiplexer, plain 
 ### Task 5: Update Host (Program.cs)
 
 **Files:**
-- Modify: `src/AzureServiceBusEmulator.Host/Program.cs`
+- Modify: `src/AlmostServiceBus.Host/Program.cs`
 
 Wire up the multiplexer in the standalone host, matching the test fixture pattern.
 
 - [ ] **Step 1: Update Program.cs**
 
 ```csharp
-// src/AzureServiceBusEmulator.Host/Program.cs
-using AzureServiceBusEmulator.Core.Amqp;
-using AzureServiceBusEmulator.Core.Broker;
-using AzureServiceBusEmulator.Core.Hosting;
-using AzureServiceBusEmulator.Core.Management;
+// src/AlmostServiceBus.Host/Program.cs
+using AlmostServiceBus.Core.Amqp;
+using AlmostServiceBus.Core.Broker;
+using AlmostServiceBus.Core.Hosting;
+using AlmostServiceBus.Core.Management;
 using System.Net;
 using System.Net.Sockets;
 
@@ -843,7 +843,7 @@ static int GetFreePort()
 
 - [ ] **Step 2: Run the host manually to verify startup**
 
-Run: `dotnet run --project src/AzureServiceBusEmulator.Host -- --Port 5672 2>&1 &` and verify the output shows the expected startup message.
+Run: `dotnet run --project src/AlmostServiceBus.Host -- --Port 5672 2>&1 &` and verify the output shows the expected startup message.
 
 Expected output:
 ```
@@ -856,7 +856,7 @@ Azure Service Bus Emulator started
 - [ ] **Step 3: Commit**
 
 ```bash
-git add src/AzureServiceBusEmulator.Host/Program.cs
+git add src/AlmostServiceBus.Host/Program.cs
 git commit -m "feat: wire up TcpMultiplexer in standalone host"
 ```
 
@@ -865,14 +865,14 @@ git commit -m "feat: wire up TcpMultiplexer in standalone host"
 ### Task 6: Delete LocalRedirectTransport and run full test suite
 
 **Files:**
-- Delete: `tests/AzureServiceBusEmulator.MassTransit.Tests/LocalRedirectTransport.cs`
+- Delete: `tests/AlmostServiceBus.MassTransit.Tests/LocalRedirectTransport.cs`
 
 - [ ] **Step 1: Delete LocalRedirectTransport**
 
-Delete the file `tests/AzureServiceBusEmulator.MassTransit.Tests/LocalRedirectTransport.cs` — it is no longer referenced by any test.
+Delete the file `tests/AlmostServiceBus.MassTransit.Tests/LocalRedirectTransport.cs` — it is no longer referenced by any test.
 
 ```bash
-git rm tests/AzureServiceBusEmulator.MassTransit.Tests/LocalRedirectTransport.cs
+git rm tests/AlmostServiceBus.MassTransit.Tests/LocalRedirectTransport.cs
 ```
 
 - [ ] **Step 2: Verify the solution builds**
@@ -886,9 +886,9 @@ Expected: Build succeeds with no errors. No remaining references to `LocalRedire
 Run: `dotnet test --verbosity normal`
 
 Expected: All tests pass across all three test projects:
-- `AzureServiceBusEmulator.Tests` — unit tests + multiplexer tests
-- `AzureServiceBusEmulator.SdkIntegration.Tests` — SDK admin client + AMQP messaging through multiplexer
-- `AzureServiceBusEmulator.MassTransit.Tests` — topology + pub/sub through multiplexer
+- `AlmostServiceBus.Tests` — unit tests + multiplexer tests
+- `AlmostServiceBus.SdkIntegration.Tests` — SDK admin client + AMQP messaging through multiplexer
+- `AlmostServiceBus.MassTransit.Tests` — topology + pub/sub through multiplexer
 
 - [ ] **Step 4: Commit**
 
