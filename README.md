@@ -1,4 +1,4 @@
-# Azure Service Bus Emulator
+# AlmostServiceBus
 
 A local Azure Service Bus emulator compatible with the official Azure SDK (`Azure.Messaging.ServiceBus`), MassTransit, Wolverine, and NServiceBus. Run your integration tests without an Azure subscription.
 
@@ -7,8 +7,9 @@ A local Azure Service Bus emulator compatible with the official Azure SDK (`Azur
 - **Full AMQP 1.0 protocol** via AMQPNetLite — no HTTP polling or fakes
 - **Queues** with PeekLock, dead-lettering, duplicate detection, and max delivery count
 - **Topics & Subscriptions** with SQL and correlation filters, forwarding, fan-out
-- **Sessions** (FIFO) with session locking and next-available-session support
+- **Sessions** (FIFO) with session locking, next-available-session, isolated delivery, and session state
 - **Scheduled messages** with enqueue-time semantics
+- **Batch message support** — correctly decodes Azure SDK `ServiceBusMessageBatch` transfers
 - **Management API** — Atom XML REST API for queue/topic/subscription CRUD
 - **TLS termination** — single port serves AMQPS, HTTPS, and plain AMQP/HTTP
 - **Namespace isolation** — use `SharedAccessKeyName` as namespace for test isolation
@@ -83,19 +84,19 @@ The emulator uses AMQPNetLite as the AMQP server (Microsoft.Azure.Amqp's server 
 
 | Framework | Status | Notes |
 |-----------|--------|-------|
-| Azure SDK (`Azure.Messaging.ServiceBus`) | **Full** | PeekLock, sessions, scheduled messages, processors |
+| Azure SDK (`Azure.Messaging.ServiceBus`) | **Full** | PeekLock, sessions, scheduled messages, processors, batch sends |
 | MassTransit | **Full** | Tested against MassTransit's own ASB test suite |
-| Wolverine | **High** | 148/155 tests pass; tracking/reply-URI edge cases excluded |
+| Wolverine | **High** | 149/155 tests pass; tracking correlation edge cases excluded |
 | NServiceBus | **Partial** | Transactions not supported; use `ReceiveOnly` transport mode |
 
 ## Test Results
 
 | Suite | Passed | Total |
 |-------|--------|-------|
-| Internal unit + integration | 192 | 192 |
+| Internal unit + integration | 206 | 206 |
 | Conformance (vs real ASB) | 22 | 22 |
 | MassTransit ASB test suite | 26 | 26 |
-| Wolverine ASB test suite | 148 | 155 |
+| Wolverine ASB test suite | 149 | 155 |
 
 ## Configuration
 
@@ -111,9 +112,9 @@ Additional ports bound automatically:
 
 ## Known Limitations
 
-- **AMQP Transactions** — `Coordinator` links are gracefully rejected (`amqp:not-implemented`)
-- **Lock renewal response** — server-side works but entity-scoped management link response framing needs work
-- **Session state** — `SetSessionStateAsync`/`GetSessionStateAsync` not yet functional (entity-scoped management link issue)
+- **AMQP Transactions** — `Coordinator` links are gracefully rejected (`amqp:not-implemented`). NServiceBus defaults to transactions; use `TransportTransactionMode.ReceiveOnly` as workaround.
+- **Lock renewal** — Server-side logic works but entity-scoped management link responses for lock renewal may have framing issues under certain conditions.
+- **Wolverine tracking** — `tracking_correlation_id_on_everything` compliance tests time out. Standalone tests confirm correct AMQP behavior; the timeout is caused by Wolverine's internal handler pipeline, not the emulator. See `tests/ms-emulator-comparison/` for a harness to verify against Microsoft's official emulator.
 
 ## Development
 
@@ -127,7 +128,10 @@ ASB_CONNECTION_STRING="Endpoint=sb://..." dotnet test tests/AzureServiceBusEmula
 
 # Run Wolverine tests (emulator must be running on port 5673)
 dotnet run --project src/AzureServiceBusEmulator.Host -- --Port 5673 --DashboardPort 0 &
-dotnet test external/wolverine/src/Transports/Azure/Wolverine.AzureServiceBus.Tests -f net9.0
+dotnet test external/wolverine/src/Transports/Azure/Wolverine.AzureServiceBus.Tests -f net10.0
+
+# Compare against Microsoft's official emulator
+cd tests/ms-emulator-comparison && ./run-wolverine-against-ms-emulator.sh
 ```
 
 ## License
