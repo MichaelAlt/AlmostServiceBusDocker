@@ -4,12 +4,12 @@ using Aspire.Hosting.ApplicationModel;
 namespace AzureServiceBusEmulator.Aspire.Hosting;
 
 /// <summary>
-/// Extension methods for adding the Azure Service Bus Emulator to an Aspire distributed application.
+/// Extension methods for adding AlmostServiceBus to an Aspire distributed application.
 /// </summary>
 public static class AzureServiceBusEmulatorBuilderExtensions
 {
     /// <summary>
-    /// Adds the Azure Service Bus Emulator as an executable resource.
+    /// Adds AlmostServiceBus as an executable resource.
     /// The emulator Host project is built and run via <c>dotnet run</c>.
     /// </summary>
     /// <param name="builder">The distributed application builder.</param>
@@ -28,7 +28,7 @@ public static class AzureServiceBusEmulatorBuilderExtensions
     /// Defaults to <c>15672</c>.
     /// </param>
     /// <returns>A resource builder that can be further configured.</returns>
-    public static IResourceBuilder<AzureServiceBusEmulatorResource> AddAzureServiceBusEmulator(
+    public static IResourceBuilder<AzureServiceBusEmulatorResource> AddServiceBusEmulator(
         this IDistributedApplicationBuilder builder,
         string name,
         string? hostProjectPath = null,
@@ -97,4 +97,5 @@ public static class AzureServiceBusEmulatorBuilderExtensions
             "Could not locate AzureServiceBusEmulator.Host.csproj. " +
             "Pass the path explicitly via the hostProjectPath parameter.");
     }
+
 }
