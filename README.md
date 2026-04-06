@@ -26,7 +26,7 @@ Unlike Microsoft's official emulator (which requires Docker with a SQL Server co
 ### Run standalone
 
 ```bash
-dotnet run --project src/AzureServiceBusEmulator.Host
+dotnet run --project src/AlmostServiceBus.Host
 ```
 
 Connection string:
@@ -36,7 +36,7 @@ Endpoint=sb://localhost:5672;SharedAccessKeyName=RootManageSharedAccessKey;Share
 
 ### Integration tests (in-process)
 
-Reference `AzureServiceBusEmulator.TestHost` and use `ServiceBusEmulatorFixture`:
+Reference `AlmostServiceBus.TestHost` and use `ServiceBusEmulatorFixture`:
 
 ```csharp
 var fixture = new ServiceBusEmulatorFixture();
@@ -56,7 +56,7 @@ Each fixture gets a unique namespace, so tests run in parallel without interfere
 
 ### Aspire integration
 
-Reference `AzureServiceBusEmulator.Aspire.Hosting`:
+Reference `AlmostServiceBus.Aspire.Hosting`:
 
 ```csharp
 var builder = DistributedApplication.CreateBuilder(args);
@@ -126,14 +126,14 @@ Additional ports bound automatically:
 
 ```bash
 # Run all tests
-dotnet test AzureServiceBusEmulator.sln --filter "FullyQualifiedName!~RealAsbConformanceTests"
+dotnet test AlmostServiceBus.sln --filter "FullyQualifiedName!~RealAsbConformanceTests"
 
 # Run conformance tests against real Azure Service Bus
-ASB_CONNECTION_STRING="Endpoint=sb://..." dotnet test tests/AzureServiceBusEmulator.Conformance.Tests \
+ASB_CONNECTION_STRING="Endpoint=sb://..." dotnet test tests/AlmostServiceBus.Conformance.Tests \
   --filter "FullyQualifiedName~RealAsbConformanceTests"
 
 # Run Wolverine tests (emulator must be running on port 5673)
-dotnet run --project src/AzureServiceBusEmulator.Host -- --Port 5673 --DashboardPort 0 &
+dotnet run --project src/AlmostServiceBus.Host -- --Port 5673 --DashboardPort 0 &
 dotnet test external/wolverine/src/Transports/Azure/Wolverine.AzureServiceBus.Tests -f net10.0
 
 # Compare against Microsoft's official emulator

@@ -1,0 +1,13 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/AlmostServiceBus.Core/AlmostServiceBus.Core.csproj" />
+    <Project Path="src/AlmostServiceBus.Host/AlmostServiceBus.Host.csproj" />
+    <Project Path="src/AlmostServiceBus.TestHost/AlmostServiceBus.TestHost.csproj" />
+    <Project Path="src/AlmostServiceBus.Aspire.Hosting/AlmostServiceBus.Aspire.Hosting.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/AlmostServiceBus.MassTransit.Tests/AlmostServiceBus.MassTransit.Tests.csproj" />
+    <Project Path="tests/AlmostServiceBus.SdkIntegration.Tests/AlmostServiceBus.SdkIntegration.Tests.csproj" />
+    <Project Path="tests/AlmostServiceBus.Tests/AlmostServiceBus.Tests.csproj" />
+  </Folder>
+</Solution>

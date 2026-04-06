@@ -39,11 +39,11 @@ jobs:
           sudo update-ca-certificates
 
       - name: Restore & Build
-        run: dotnet build AzureServiceBusEmulator.sln
+        run: dotnet build AlmostServiceBus.sln
 
       - name: Test
         run: |
-          dotnet test AzureServiceBusEmulator.sln \
+          dotnet test AlmostServiceBus.sln \
             --no-build \
             --filter "FullyQualifiedName!~RealAsbConformanceTests"
 
@@ -51,7 +51,7 @@ jobs:
   # Wolverine's own Azure Service Bus tests connect to the official emulator
   # API on port 5673 (AMQP) and 5300 (HTTP management) using
   # UseDevelopmentEmulator=true, which disables TLS.  We start
-  # AzureServiceBusEmulator on port 5673 so it becomes a drop-in replacement.
+  # AlmostServiceBus on port 5673 so it becomes a drop-in replacement.
   wolverine-conformance:
     name: Wolverine Conformance
     runs-on: ubuntu-latest
@@ -78,14 +78,14 @@ jobs:
         run: dotnet dev-certs https
 
       - name: Build emulator host
-        run: dotnet build src/AzureServiceBusEmulator.Host
+        run: dotnet build src/AlmostServiceBus.Host
 
       - name: Start emulator on port 5673
         run: |
           # Port 5673: AMQP (matches Wolverine's Servers.AzureServiceBusConnectionString)
           # Port 5300: management HTTP (already bound by default in the host)
           # Port 443:  may fail without root — the host already handles that gracefully
-          dotnet run --project src/AzureServiceBusEmulator.Host --no-build \
+          dotnet run --project src/AlmostServiceBus.Host --no-build \
             -- --Port 5673 --DashboardPort 0 &
           echo "EMULATOR_PID=$!" >> "$GITHUB_ENV"
           # Wait up to 30 seconds for the AMQP port to open
@@ -208,11 +208,11 @@ jobs:
             ../../patches/MassTransit/0001-emulator-endpoint-support.patch
 
       - name: Build emulator host
-        run: dotnet build src/AzureServiceBusEmulator.Host
+        run: dotnet build src/AlmostServiceBus.Host
 
       - name: Start emulator on port 5672
         run: |
-          dotnet run --project src/AzureServiceBusEmulator.Host --no-build \
+          dotnet run --project src/AlmostServiceBus.Host --no-build \
             -- --Port 5672 --DashboardPort 0 &
           echo "EMULATOR_PID=$!" >> "$GITHUB_ENV"
           for i in $(seq 1 30); do
