@@ -81,7 +81,7 @@ public class ManagementLinkEndpoint : IRequestProcessor
         {
             var entityName = requestContext.Message.ApplicationProperties?["associated-link-name"]?.ToString();
 
-            if (scheduleBody.TryGetValue(new Symbol("messages"), out var messagesObj) && messagesObj is List messagesList)
+            if (TryGetMapValue(scheduleBody, "messages", out var messagesObj) && messagesObj is List messagesList)
             {
                 foreach (var item in messagesList)
                 {
@@ -89,14 +89,14 @@ public class ManagementLinkEndpoint : IRequestProcessor
 
                     // Extract the inner AMQP message
                     Message? innerMessage = null;
-                    if (msgMap.TryGetValue(new Symbol("message"), out var msgBytes) && msgBytes is byte[] rawMessage)
+                    if (TryGetMapValue(msgMap, "message", out var msgBytes) && msgBytes is byte[] rawMessage)
                     {
                         innerMessage = Message.Decode(new ByteBuffer(rawMessage, 0, rawMessage.Length, rawMessage.Length));
                     }
 
                     // Extract the message-id
                     string? messageId = null;
-                    if (msgMap.TryGetValue(new Symbol("message-id"), out var mid))
+                    if (TryGetMapValue(msgMap, "message-id", out var mid))
                         messageId = mid?.ToString();
 
                     if (innerMessage is not null)
@@ -144,10 +144,16 @@ public class ManagementLinkEndpoint : IRequestProcessor
             }
         }
 
-        // Return the sequence numbers as the response
+        // Return the sequence numbers as the response.
+        // AMQPNetLite's WriteArray has a bug where encoding an empty long[] produces
+        // malformed bytes (size=1 with no data). The Azure SDK's parser then throws
+        // amqp:decode-error. Use Amqp.Types.List when empty; non-empty long[] is fine.
+        object seqNumbersValue = sequenceNumbers.Count > 0
+            ? (object)sequenceNumbers.ToArray()
+            : new List();
         var responseBody = new Map
         {
-            { "sequence-numbers", sequenceNumbers.ToArray() }
+            { "sequence-numbers", seqNumbersValue }
         };
         var response = new Message(responseBody)
         {
@@ -231,7 +237,7 @@ public class ManagementLinkEndpoint : IRequestProcessor
     {
         if (_scheduledProcessor is not null && requestContext.Message.Body is Map body)
         {
-            if (body.TryGetValue(new Symbol("sequence-numbers"), out var seqNumbers) && seqNumbers is long[] numbers)
+            if (TryGetMapValue(body, "sequence-numbers", out var seqNumbers) && seqNumbers is long[] numbers)
             {
                 foreach (var seqNo in numbers)
                 {

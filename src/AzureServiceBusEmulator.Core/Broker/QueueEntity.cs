@@ -209,6 +209,13 @@ public sealed class QueueEntity
     }
 
     /// <summary>
+    /// Waits asynchronously until a message is available in the queue channel.
+    /// Used by the message pump to avoid busy-polling when the queue is empty.
+    /// </summary>
+    public ValueTask<bool> WaitToReadAsync(CancellationToken ct = default) =>
+        _channel.Reader.WaitToReadAsync(ct);
+
+    /// <summary>
     /// Adds a message to the pending (locked) dictionary by its lock token.
     /// </summary>
     public void TrackPending(BrokeredMessage message)
