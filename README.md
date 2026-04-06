@@ -60,7 +60,7 @@ Reference `AzureServiceBusEmulator.Aspire.Hosting`:
 
 ```csharp
 var builder = DistributedApplication.CreateBuilder(args);
-var serviceBus = builder.AddAzureServiceBusEmulator("servicebus");
+var serviceBus = builder.AddServiceBusEmulator("servicebus");
 ```
 
 ## Architecture
