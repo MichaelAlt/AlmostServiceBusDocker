@@ -251,15 +251,7 @@ public class ManagementLinkEndpoint : IRequestProcessor
 
     private void HandleRenewSessionLock(RequestContext requestContext)
     {
-        // The Azure SDK sends session-id in the message body map, not in ApplicationProperties
-        string? sessionId = null;
-        if (requestContext.Message.Body is Map renewBody)
-        {
-            if (TryGetMapValue(renewBody, "session-id", out var sidObj))
-                sessionId = sidObj?.ToString();
-        }
-        // Fallback: also check ApplicationProperties for compatibility
-        sessionId ??= requestContext.Message.ApplicationProperties?["session-id"] as string;
+        var sessionId = ExtractSessionId(requestContext);
 
         var sessionManager = FindSessionManager();
         if (sessionId is null || sessionManager is null)
@@ -293,15 +285,7 @@ public class ManagementLinkEndpoint : IRequestProcessor
 
     private void HandleGetSessionState(RequestContext requestContext)
     {
-        // The Azure SDK sends session-id in the message body map, not in ApplicationProperties
-        string? sessionId = null;
-        if (requestContext.Message.Body is Map getBody)
-        {
-            if (TryGetMapValue(getBody, "session-id", out var sidObj))
-                sessionId = sidObj?.ToString();
-        }
-        // Fallback: also check ApplicationProperties for compatibility
-        sessionId ??= requestContext.Message.ApplicationProperties?["session-id"] as string;
+        var sessionId = ExtractSessionId(requestContext);
 
         if (sessionId is null)
         {
@@ -336,15 +320,11 @@ public class ManagementLinkEndpoint : IRequestProcessor
 
     private void HandleSetSessionState(RequestContext requestContext)
     {
-        // The Azure SDK sends session-id in the message body map, not in ApplicationProperties
-        string? sessionId = null;
+        var sessionId = ExtractSessionId(requestContext);
         byte[]? state = null;
 
         if (requestContext.Message.Body is Map setBody)
         {
-            if (TryGetMapValue(setBody, "session-id", out var sidObj))
-                sessionId = sidObj?.ToString();
-
             if (TryGetMapValue(setBody, "session-state", out var stateObj))
             {
                 state = stateObj switch
@@ -387,6 +367,21 @@ public class ManagementLinkEndpoint : IRequestProcessor
 
     /// <summary>
     /// Finds the SessionManager for session operations. Uses the scoped queue if available,
+    /// Extracts a session ID from a management request message body or application properties.
+    /// </summary>
+    private static string? ExtractSessionId(RequestContext requestContext)
+    {
+        string? sessionId = null;
+        if (requestContext.Message.Body is Map body)
+        {
+            if (TryGetMapValue(body, "session-id", out var sidObj))
+                sessionId = sidObj?.ToString();
+        }
+        sessionId ??= requestContext.Message.ApplicationProperties?["session-id"] as string;
+        return sessionId;
+    }
+
+    /// <summary>
     /// otherwise searches all queues in the namespace.
     /// </summary>
     private SessionManager? FindSessionManager()

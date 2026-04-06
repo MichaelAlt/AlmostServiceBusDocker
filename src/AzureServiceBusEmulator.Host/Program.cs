@@ -3,9 +3,6 @@ using AzureServiceBusEmulator.Core.Broker;
 using AzureServiceBusEmulator.Core.Dashboard;
 using AzureServiceBusEmulator.Core.Hosting;
 using AzureServiceBusEmulator.Core.Management;
-using System.Net;
-using System.Security.Cryptography.X509Certificates;
-using System.Net.Sockets;
 using Vite.AspNetCore;
 
 // ── Management API server (internal, behind TLS multiplexer) ──
@@ -21,8 +18,8 @@ AmqpLog.Factory = LoggerFactory.Create(b => b
 var publicPort = mgmtBuilder.Configuration.GetValue("Port", 5672);
 var dashboardPort = mgmtBuilder.Configuration.GetValue("DashboardPort", 15672);
 var amqpsPort = 5671;
-var internalHttpPort = GetFreePort();
-var internalAmqpPort = GetFreePort();
+var internalHttpPort = EmulatorInfrastructure.GetFreePort();
+var internalAmqpPort = EmulatorInfrastructure.GetFreePort();
 
 var eventBus = new MessageEventBus();
 var registry = new NamespaceRegistry(eventBus);
@@ -80,7 +77,7 @@ amqpServer.Start();
 
 // ── TLS multiplexers ──
 
-var cert = LoadDevCert();
+var cert = EmulatorInfrastructure.LoadDevCert();
 var multiplexerCts = new CancellationTokenSource();
 
 var multiplexer = new TcpMultiplexer(publicPort, internalAmqpPort, internalHttpPort, cert);
@@ -135,24 +132,3 @@ await Task.WhenAll(
     dashApp.StopAsync(timeout.Token)
 );
 
-static X509Certificate2 LoadDevCert()
-{
-    using var store = new X509Store(StoreName.My, StoreLocation.CurrentUser);
-    store.Open(OpenFlags.ReadOnly);
-    var certs = store.Certificates.Find(
-        X509FindType.FindByExtension, "1.3.6.1.4.1.311.84.1.1", validOnly: false);
-    if (certs.Count == 0)
-        throw new InvalidOperationException(
-            "ASP.NET HTTPS development certificate not found. " +
-            "Run 'dotnet dev-certs https --trust' to generate and trust the certificate.");
-    return new X509Certificate2(certs[0]);
-}
-
-static int GetFreePort()
-{
-    var listener = new TcpListener(IPAddress.Loopback, 0);
-    listener.Start();
-    var port = ((IPEndPoint)listener.LocalEndpoint).Port;
-    listener.Stop();
-    return port;
-}
