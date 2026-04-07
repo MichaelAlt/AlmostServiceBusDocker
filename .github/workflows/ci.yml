@@ -124,8 +124,6 @@ jobs:
           FILTER="$FILTER&FullyQualifiedName!~will_requeue_and_increment_attempts"
           # DLQ mechanics: emulator DLQ delivery not fully supported
           FILTER="$FILTER&FullyQualifiedName!~dlq_mechanics"
-          # Session ordering: emulator delivers across sessions without strict FIFO guarantee
-          FILTER="$FILTER&FullyQualifiedName!~send_and_receive_multiple_messages_to_queue_with_session_identifier"
           # Back-pressure: tracking can't detect Message1 received after listener restart
           FILTER="$FILTER&FullyQualifiedName!~can_stop_receiving_when_too_busy_and_restart_listeners"
           dotnet test \
