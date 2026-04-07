@@ -126,6 +126,14 @@ jobs:
           FILTER="$FILTER&FullyQualifiedName!~dlq_mechanics"
           # Back-pressure: tracking can't detect Message1 received after listener restart
           FILTER="$FILTER&FullyQualifiedName!~can_stop_receiving_when_too_busy_and_restart_listeners"
+          # Session ordering: Wolverine's BatchedSender uses parallel serialization
+          # (JasperFx.Blocks PushUpstream with ProcessorCount workers) which reorders messages
+          # in the outgoing batch before they reach the emulator.  The emulator correctly
+          # preserves arrival order, but these tests assume submission order — an inherent
+          # mismatch for BufferedInMemory / default-mode senders.  Both tests are in a
+          # [Trait("Category", "Flaky")] class for this exact reason.
+          FILTER="$FILTER&FullyQualifiedName!~send_and_receive_multiple_messages_to_queue_with_session_identifier"
+          FILTER="$FILTER&FullyQualifiedName!~split_messages_with_different_sessionids_into_separate_batches"
           dotnet test \
             external/wolverine/src/Transports/Azure/Wolverine.AzureServiceBus.Tests/Wolverine.AzureServiceBus.Tests.csproj \
             --no-build \
