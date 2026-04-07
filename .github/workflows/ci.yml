@@ -234,7 +234,8 @@ jobs:
           MT_ASB_KEYVALUE: emulator
         run: |
           FILTER="FullyQualifiedName!~Sending_a_message_to_a_session"     # Requires session concurrency support
-          FILTER="$FILTER&FullyQualifiedName!~blob_storage"               # Requires Azure Blob Storage
+          FILTER="$FILTER&FullyQualifiedName!~Sending_a_message_with"       # MessageData: requires Azure Blob Storage
+          FILTER="$FILTER&FullyQualifiedName!~Sending_a_compressed_message_with_data"  # MessageData: requires Azure Blob Storage
           FILTER="$FILTER&FullyQualifiedName!~Sending_multiple_messages_to_a_session"  # Session concurrency
           FILTER="$FILTER&FullyQualifiedName!~Turnout"                    # Turnout/job service, not implemented
           FILTER="$FILTER&TestCategory!=Flaky"                            # NUnit Flaky-marked tests (known intermittent)

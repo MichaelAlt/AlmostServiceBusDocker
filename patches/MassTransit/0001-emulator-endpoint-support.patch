@@ -76,6 +76,82 @@ index d618e98..0970a37 100644
 +        }
      }
  }
+diff --git a/src/Transports/MassTransit.Azure.ServiceBus.Core/ServiceBusEndpointAddress.cs b/src/Transports/MassTransit.Azure.ServiceBus.Core/ServiceBusEndpointAddress.cs
+index 91bec7e..226ddc3 100644
+--- a/src/Transports/MassTransit.Azure.ServiceBus.Core/ServiceBusEndpointAddress.cs
++++ b/src/Transports/MassTransit.Azure.ServiceBus.Core/ServiceBusEndpointAddress.cs
+@@ -28,6 +28,7 @@ public enum AddressType
+         public readonly string Scheme;
+         public readonly string Host;
+         public readonly string Scope;
++        public readonly int Port;
+ 
+         public readonly string Name;
+         public readonly TimeSpan? AutoDelete;
+@@ -38,6 +39,7 @@ public ServiceBusEndpointAddress(Uri hostAddress, Uri address, AddressType type
+             Scheme = default;
+             Host = default;
+             Scope = default;
++            Port = -1;
+ 
+             AutoDelete = default;
+             Type = type;
+@@ -48,18 +50,19 @@ public ServiceBusEndpointAddress(Uri hostAddress, Uri address, AddressType type
+                 case "sb":
+                     Scheme = address.Scheme;
+                     Host = address.Host;
++                    Port = address.IsDefaultPort ? -1 : address.Port;
+ 
+                     address.ParseHostPathAndEntityName(out Scope, out Name);
+                     break;
+ 
+                 case "queue":
+-                    ParseLeft(hostAddress, out Scheme, out Host, out Scope);
++                    ParseLeft(hostAddress, out Scheme, out Host, out Scope, out Port);
+ 
+                     Name = address.AbsolutePath;
+                     break;
+ 
+                 case "topic":
+-                    ParseLeft(new Uri(hostAddress.GetLeftPart(UriPartial.Authority)), out Scheme, out Host, out Scope);
++                    ParseLeft(new Uri(hostAddress.GetLeftPart(UriPartial.Authority)), out Scheme, out Host, out Scope, out Port);
+ 
+                     Name = address.AbsolutePath;
+                     Type = AddressType.Topic;
+@@ -86,7 +89,7 @@ public ServiceBusEndpointAddress(Uri hostAddress, Uri address, AddressType type
+ 
+         public ServiceBusEndpointAddress(Uri hostAddress, string name, TimeSpan? autoDelete = default, AddressType type = AddressType.Queue)
+         {
+-            ParseLeft(hostAddress, out Scheme, out Host, out Scope);
++            ParseLeft(hostAddress, out Scheme, out Host, out Scope, out Port);
+ 
+             Name = name;
+ 
+@@ -96,12 +99,13 @@ public ServiceBusEndpointAddress(Uri hostAddress, string name, TimeSpan? autoDel
+ 
+         public string Path => Scope == "/" ? Name : $"{Scope}/{Name}";
+ 
+-        static void ParseLeft(Uri address, out string scheme, out string host, out string scope)
++        static void ParseLeft(Uri address, out string scheme, out string host, out string scope, out int port)
+         {
+             var hostAddress = new ServiceBusHostAddress(address);
+             scheme = hostAddress.Scheme;
+             host = hostAddress.Host;
+             scope = hostAddress.Scope;
++            port = hostAddress.Port;
+         }
+ 
+         public static implicit operator Uri(in ServiceBusEndpointAddress address)
+@@ -115,6 +119,9 @@ public static implicit operator Uri(in ServiceBusEndpointAddress address)
+                     : $"/{address.Scope}/{address.Name}"
+             };
+ 
++            if (address.Port > 0)
++                builder.Port = address.Port;
++
+             builder.Query += string.Join("&", address.GetQueryStringOptions());
+ 
+             return builder.Uri;
 diff --git a/src/Transports/MassTransit.Azure.ServiceBus.Core/ServiceBusHostAddress.cs b/src/Transports/MassTransit.Azure.ServiceBus.Core/ServiceBusHostAddress.cs
 index 2584e0d..83451a3 100644
 --- a/src/Transports/MassTransit.Azure.ServiceBus.Core/ServiceBusHostAddress.cs
