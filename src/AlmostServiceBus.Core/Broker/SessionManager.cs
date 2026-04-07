@@ -35,9 +35,9 @@ public class SessionState
         lock (_lock)
         {
             _messages.Enqueue(message, message.SequenceNumber);
+            Interlocked.Increment(ref _messageCount);
         }
 
-        Interlocked.Increment(ref _messageCount);
         _signal.Release();
     }
 
