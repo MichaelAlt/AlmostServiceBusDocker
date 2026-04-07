@@ -12,6 +12,17 @@
     <TargetFramework>net10.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
+    <!-- Dashboard Vue app lives in a sibling directory -->
+    <DashboardDir>$(MSBuildThisFileDirectory)..\AlmostServiceBus.Dashboard</DashboardDir>
   </PropertyGroup>
+
+  <!-- Build the Vue dashboard before the .NET build when wwwroot is missing
+       or when building in Release. In Development with an existing wwwroot,
+       Vite.AspNetCore proxies to the Vite dev server for hot reload. -->
+  <Target Name="BuildDashboard" BeforeTargets="Build"
+          Condition="('$(Configuration)' == 'Release' OR !Exists('$(MSBuildThisFileDirectory)wwwroot/index.html')) AND Exists('$(DashboardDir)/package.json')">
+    <Exec Command="npm ci --prefix $(DashboardDir)" />
+    <Exec Command="npm run build --prefix $(DashboardDir)" />
+  </Target>
 
 </Project>
