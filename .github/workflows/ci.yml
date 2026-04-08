@@ -172,7 +172,8 @@ jobs:
 
       - name: Summarize test results
         if: always()
-        run: python3 .github/scripts/summarize_trx.py "Wolverine: ${{ matrix.group }}" artifacts/test-results/wolverine
+        run: |
+          python3 .github/scripts/summarize_trx.py "Wolverine: ${{ matrix.group }}" artifacts/test-results/wolverine
 
       - name: Stop emulator
         if: always()
