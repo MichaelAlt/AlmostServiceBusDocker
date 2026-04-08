@@ -159,7 +159,13 @@ public class EmulatorContainer : IContainer
             RequestProcessorEntry? entry;
             lock (_requestProcessors)
             {
-                _requestProcessors.TryGetValue(address, out entry);
+                var processorKey = address;
+                if (address.EndsWith("/$management", StringComparison.OrdinalIgnoreCase))
+                {
+                    processorKey = BuildEntityManagementProcessorKey(listenerLink.Session.Connection, address);
+                }
+
+                _requestProcessors.TryGetValue(processorKey, out entry);
 
                 // Entity-scoped $management links (e.g. "my-queue/$management")
                 // Create an entity-specific management endpoint if possible, otherwise
@@ -167,10 +173,10 @@ public class EmulatorContainer : IContainer
                 if (entry is null && address.EndsWith("/$management", StringComparison.OrdinalIgnoreCase))
                 {
                     var entityName = address[..^"/$management".Length].TrimStart('/');
-                    var entityEntry = TryCreateEntityManagementEntry(entityName);
+                    var entityEntry = TryCreateEntityManagementEntry(entityName, ResolveNamespaceName(listenerLink.Session.Connection));
                     if (entityEntry is not null)
                     {
-                        _requestProcessors[address] = entityEntry;
+                        _requestProcessors[processorKey] = entityEntry;
                         entry = entityEntry;
                     }
                     else
@@ -197,15 +203,21 @@ public class EmulatorContainer : IContainer
             RequestProcessorEntry? entry;
             lock (_requestProcessors)
             {
-                _requestProcessors.TryGetValue(sourceAddress, out entry);
+                var processorKey = sourceAddress;
+                if (sourceAddress.EndsWith("/$management", StringComparison.OrdinalIgnoreCase))
+                {
+                    processorKey = BuildEntityManagementProcessorKey(listenerLink.Session.Connection, sourceAddress);
+                }
+
+                _requestProcessors.TryGetValue(processorKey, out entry);
 
                 if (entry is null && sourceAddress.EndsWith("/$management", StringComparison.OrdinalIgnoreCase))
                 {
                     var entityName = sourceAddress[..^"/$management".Length].TrimStart('/');
-                    var entityEntry = TryCreateEntityManagementEntry(entityName);
+                    var entityEntry = TryCreateEntityManagementEntry(entityName, ResolveNamespaceName(listenerLink.Session.Connection));
                     if (entityEntry is not null)
                     {
-                        _requestProcessors[sourceAddress] = entityEntry;
+                        _requestProcessors[processorKey] = entityEntry;
                         entry = entityEntry;
                     }
                     else
@@ -464,7 +476,7 @@ public class EmulatorContainer : IContainer
     /// Attempts to create an entity-specific management endpoint for the given entity name.
     /// Returns null if the registry is not configured or the entity is not found.
     /// </summary>
-    private RequestProcessorEntry? TryCreateEntityManagementEntry(string entityName)
+    private RequestProcessorEntry? TryCreateEntityManagementEntry(string entityName, string? preferredNamespaceName = null)
     {
         if (_registry is null)
         {
@@ -472,16 +484,26 @@ public class EmulatorContainer : IContainer
             return null;
         }
 
-        // Resolve the namespace context — try all namespaces to find the queue
         NamespaceContext? context = null;
         QueueEntity? queue = null;
-        foreach (var nsName in _registry.ListNamespaces())
+
+        if (!string.IsNullOrWhiteSpace(preferredNamespaceName))
         {
-            var ns = _registry.Get(nsName);
-            if (ns is null) continue;
-            queue = ns.ResolveQueue(entityName);
-            if (queue is not null) { context = ns; break; }
+            context = _registry.Get(preferredNamespaceName!);
+            queue = context?.ResolveQueue(entityName);
         }
+
+        if (queue is null)
+        {
+            foreach (var nsName in _registry.ListNamespaces())
+            {
+                var ns = _registry.Get(nsName);
+                if (ns is null) continue;
+                queue = ns.ResolveQueue(entityName);
+                if (queue is not null) { context = ns; break; }
+            }
+        }
+
         if (context is null)
             context = _registry.GetOrCreate("default");
         if (queue is null)
@@ -496,6 +518,37 @@ public class EmulatorContainer : IContainer
 
         Log.LogWarning("TryCreateEntityManagementEntry: Queue not found for entity '{EntityName}'", entityName);
         return null;
+    }
+
+    private static string BuildEntityManagementProcessorKey(Connection connection, string address)
+    {
+        return $"{ResolveNamespaceName(connection)}|{address}";
+    }
+
+    private static string ResolveNamespaceName(Connection connection)
+    {
+        var keyName = CbsRequestProcessor.GetNamespaceForConnection(connection);
+        if (!string.IsNullOrWhiteSpace(keyName))
+            return keyName;
+
+        try
+        {
+            var openProp = connection.GetType().GetProperty("Open",
+                BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
+            if (openProp?.GetValue(connection) is Open open && !string.IsNullOrEmpty(open.HostName))
+            {
+                var host = open.HostName;
+                var namespaceName = host.Split('.')[0];
+                if (!namespaceName.Equals("localhost", StringComparison.OrdinalIgnoreCase))
+                    return namespaceName;
+            }
+        }
+        catch
+        {
+            // Fall through to default.
+        }
+
+        return "default";
     }
 
     private static AttachContext? CreateAttachContext(ListenerLink link, Attach attach)

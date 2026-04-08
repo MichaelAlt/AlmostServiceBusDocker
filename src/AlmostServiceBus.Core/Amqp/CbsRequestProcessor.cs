@@ -23,11 +23,12 @@ public class CbsRequestProcessor : IRequestProcessor
     }
 
     // Maps each live AMQP connection instance → namespace name extracted from SAS key name.
-    // Keep both object-identity and hash-based lookups: in live AMQPNetLite traffic some
-    // callbacks can surface a different Connection wrapper instance for the same logical
-    // connection, while still preserving the hash code used by the older implementation.
+    // Some AMQPNetLite callbacks can surface a different Connection wrapper for the same
+    // logical socket, so also track the underlying transport identity and connection ids
+    // when available.
     private static readonly ConditionalWeakTable<Connection, NamespaceHolder> _connectionNamespaces = new();
-    private static readonly ConcurrentDictionary<int, string> _connectionNamespaceHashes = new();
+    private static readonly ConditionalWeakTable<ITransport, NamespaceHolder> _transportNamespaces = new();
+    private static readonly ConcurrentDictionary<string, string> _connectionIdentityNamespaces = new(StringComparer.Ordinal);
 
     // CBS links are long-lived and can see bursts of token renewals across many
     // parallel clients, so keep the request credit comfortably above the default.
@@ -38,13 +39,27 @@ public class CbsRequestProcessor : IRequestProcessor
         if (_connectionNamespaces.TryGetValue(connection, out var holder))
             return holder.Value;
 
-        return _connectionNamespaceHashes.TryGetValue(connection.GetHashCode(), out var ns) ? ns : null;
+        var transport = TryGetTransport(connection);
+        if (transport is not null && _transportNamespaces.TryGetValue(transport, out holder))
+            return holder.Value;
+
+        var identityKey = TryGetConnectionIdentityKey(connection);
+        return identityKey is not null && _connectionIdentityNamespaces.TryGetValue(identityKey, out var ns)
+            ? ns
+            : null;
     }
 
     public static void RemoveConnection(Connection connection)
     {
         _connectionNamespaces.Remove(connection);
-        _connectionNamespaceHashes.TryRemove(connection.GetHashCode(), out _);
+
+        var transport = TryGetTransport(connection);
+        if (transport is not null)
+            _transportNamespaces.Remove(transport);
+
+        var identityKey = TryGetConnectionIdentityKey(connection);
+        if (identityKey is not null)
+            _connectionIdentityNamespaces.TryRemove(identityKey, out _);
     }
 
     internal static void SetNamespaceForConnection(Connection connection, string? keyName)
@@ -56,7 +71,14 @@ public class CbsRequestProcessor : IRequestProcessor
             return;
 
         _connectionNamespaces.Add(connection, new NamespaceHolder(keyName));
-        _connectionNamespaceHashes[connection.GetHashCode()] = keyName;
+
+        var transport = TryGetTransport(connection);
+        if (transport is not null)
+            _transportNamespaces.Add(transport, new NamespaceHolder(keyName));
+
+        var identityKey = TryGetConnectionIdentityKey(connection);
+        if (identityKey is not null)
+            _connectionIdentityNamespaces[identityKey] = keyName;
     }
 
     public void Process(RequestContext requestContext)
@@ -105,5 +127,42 @@ public class CbsRequestProcessor : IRequestProcessor
             SetNamespaceForConnection(connection, keyName);
         }
         catch { /* ignore parsing errors */ }
+    }
+
+    private static ITransport? TryGetTransport(Connection connection)
+    {
+        try
+        {
+            var transportProp = connection.GetType().GetProperty("Transport",
+                System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic);
+            return transportProp?.GetValue(connection) as ITransport;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private static string? TryGetConnectionIdentityKey(Connection connection)
+    {
+        try
+        {
+            var type = connection.GetType();
+            var remoteContainerId = type.GetProperty("RemoteContainerId",
+                System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic)
+                ?.GetValue(connection) as string;
+            var containerId = type.GetProperty("ContainerId",
+                System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic)
+                ?.GetValue(connection) as string;
+
+            if (string.IsNullOrWhiteSpace(remoteContainerId) && string.IsNullOrWhiteSpace(containerId))
+                return null;
+
+            return $"{remoteContainerId ?? ""}|{containerId ?? ""}";
+        }
+        catch
+        {
+            return null;
+        }
     }
 }

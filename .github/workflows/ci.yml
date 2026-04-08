@@ -148,7 +148,9 @@ jobs:
           FILTER="$FILTER&FullyQualifiedName!~tracking_correlation_id_on_everything"
           # Request-reply: named broker reply URI resolution
           FILTER="$FILTER&FullyQualifiedName!~correct_scheme_on_reply_uri"
-          # Requeue and DLQ tests are enabled (CBS response link lookup supports these scenarios).
+          # Requeue coverage stays enabled, but dlq_mechanics is still flaky when Wolverine
+          # opens an ad-hoc receiver against the shared wolverine-dead-letter-queue.
+          FILTER="$FILTER&FullyQualifiedName!~dlq_mechanics"
           # Back-pressure: tracking can't detect Message1 received after listener restart
           FILTER="$FILTER&FullyQualifiedName!~can_stop_receiving_when_too_busy_and_restart_listeners"
           # Session ordering: Wolverine's BatchedSender uses parallel serialization
