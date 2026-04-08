@@ -12,6 +12,7 @@ jobs:
     permissions:
       contents: read
       packages: write
+      id-token: write  # Required for OIDC NuGet login
 
     steps:
       - uses: actions/checkout@v4
@@ -23,34 +24,39 @@ jobs:
         with:
           dotnet-version: "10.x"
 
+      - name: Setup Node.js (for dashboard build)
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
       - name: Restore
-        run: dotnet restore AzureServiceBusEmulator.sln
+        run: dotnet restore AlmostServiceBus.sln
 
       - name: Build
-        run: dotnet build AzureServiceBusEmulator.sln --configuration Release --no-restore
+        run: dotnet build AlmostServiceBus.sln --configuration Release --no-restore
 
       - name: Test
         run: |
-          dotnet test AzureServiceBusEmulator.sln \
+          dotnet test AlmostServiceBus.sln \
             --configuration Release \
             --no-build \
             --filter "FullyQualifiedName!~RealAsbConformanceTests"
 
       - name: Pack
         run: |
-          dotnet pack src/AzureServiceBusEmulator.Core --configuration Release --no-build --output ./nupkgs
-          dotnet pack src/AzureServiceBusEmulator.TestHost --configuration Release --no-build --output ./nupkgs
-          dotnet pack src/AzureServiceBusEmulator.Aspire.Hosting --configuration Release --no-build --output ./nupkgs
+          dotnet pack src/AlmostServiceBus.Core --configuration Release --no-build --output ./nupkgs
+          dotnet pack src/AlmostServiceBus.TestHost --configuration Release --no-build --output ./nupkgs
+          dotnet pack src/AlmostServiceBus.Aspire.Hosting --configuration Release --no-build --output ./nupkgs
 
       - name: NuGet login (OIDC → temp API key)
         uses: NuGet/login@v1
         id: login
-        with: 
+        with:
           user: ${{ secrets.NUGET_USER }}
 
       - name: Push to NuGet.org
         run: |
           dotnet nuget push ./nupkgs/*.nupkg \
-            --api-key ${{steps.login.outputs.NUGET_API_KEY}}
+            --api-key ${{ steps.login.outputs.NUGET_API_KEY }} \
             --source https://api.nuget.org/v3/index.json \
             --skip-duplicate
