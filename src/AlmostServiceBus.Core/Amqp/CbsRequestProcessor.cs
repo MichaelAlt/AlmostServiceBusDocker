@@ -1,4 +1,4 @@
-using System.Collections.Concurrent;
+using System.Runtime.CompilerServices;
 using System.Text;
 using global::Amqp;
 using global::Amqp.Framing;
@@ -14,20 +14,37 @@ namespace AlmostServiceBus.Core.Amqp;
 /// </summary>
 public class CbsRequestProcessor : IRequestProcessor
 {
-    // Maps connection identity → namespace name extracted from SAS key name.
-    // Used by ServiceBusLinkProcessor to resolve namespaces.
-    private static readonly ConcurrentDictionary<int, string> _connectionNamespaces = new();
+    private sealed class NamespaceHolder(string value)
+    {
+        public string Value { get; } = value;
+    }
+
+    // Maps each live AMQP connection instance → namespace name extracted from SAS key name.
+    // ConditionalWeakTable uses object identity, so separate connections can never collide
+    // by hash code under heavy parallel test load.
+    private static readonly ConditionalWeakTable<Connection, NamespaceHolder> _connectionNamespaces = new();
 
     public int Credit => 10000;
 
     public static string? GetNamespaceForConnection(Connection connection)
     {
-        return _connectionNamespaces.TryGetValue(connection.GetHashCode(), out var ns) ? ns : null;
+        return _connectionNamespaces.TryGetValue(connection, out var holder) ? holder.Value : null;
     }
 
     public static void RemoveConnection(Connection connection)
     {
-        _connectionNamespaces.TryRemove(connection.GetHashCode(), out _);
+        _connectionNamespaces.Remove(connection);
+    }
+
+    internal static void SetNamespaceForConnection(Connection connection, string? keyName)
+    {
+        _connectionNamespaces.Remove(connection);
+
+        if (string.IsNullOrEmpty(keyName)
+            || keyName.Equals("RootManageSharedAccessKey", StringComparison.OrdinalIgnoreCase))
+            return;
+
+        _connectionNamespaces.Add(connection, new NamespaceHolder(keyName));
     }
 
     public void Process(RequestContext requestContext)
@@ -72,12 +89,8 @@ public class CbsRequestProcessor : IRequestProcessor
             var end = token.IndexOf('&', start);
             var keyName = end >= 0 ? token[start..end] : token[start..];
 
-            if (!string.IsNullOrEmpty(keyName)
-                && !keyName.Equals("RootManageSharedAccessKey", StringComparison.OrdinalIgnoreCase))
-            {
-                var connection = requestContext.Link.Session.Connection;
-                _connectionNamespaces[connection.GetHashCode()] = keyName;
-            }
+            var connection = requestContext.Link.Session.Connection;
+            SetNamespaceForConnection(connection, keyName);
         }
         catch { /* ignore parsing errors */ }
     }
