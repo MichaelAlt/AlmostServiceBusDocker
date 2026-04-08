@@ -20,14 +20,16 @@ public class ManagementLinkEndpoint : IRequestProcessor
     private readonly NamespaceContext _context;
     private readonly NamespaceRegistry? _registry;
     private readonly ScheduledMessageProcessor? _scheduledProcessor;
+    private readonly string? _scopedAddress;
     private readonly QueueEntity? _scopedQueue;
     private readonly ConcurrentDictionary<string, string>? _senderLinkNames;
 
-    public ManagementLinkEndpoint(NamespaceContext context, ScheduledMessageProcessor? scheduledProcessor = null, QueueEntity? scopedQueue = null, ConcurrentDictionary<string, string>? senderLinkNames = null, NamespaceRegistry? registry = null)
+    public ManagementLinkEndpoint(NamespaceContext context, ScheduledMessageProcessor? scheduledProcessor = null, string? scopedAddress = null, QueueEntity? scopedQueue = null, ConcurrentDictionary<string, string>? senderLinkNames = null, NamespaceRegistry? registry = null)
     {
         _context = context;
         _registry = registry;
         _scheduledProcessor = scheduledProcessor;
+        _scopedAddress = scopedAddress;
         _scopedQueue = scopedQueue;
         _senderLinkNames = senderLinkNames;
     }
@@ -146,13 +148,20 @@ public class ManagementLinkEndpoint : IRequestProcessor
                         // If not resolved as an entity path, try the sender link name registry.
                         if (address is null
                             && !string.IsNullOrEmpty(entityName)
-                            && _senderLinkNames?.TryGetValue(entityName, out var registeredPath) == true)
+                            && _senderLinkNames is not null)
                         {
-                            Log.LogDebug("schedule-message: resolved link name '{LinkName}' → entity '{Entity}'", entityName, registeredPath);
-                            address = registeredPath;
+                            foreach (var senderLinkKey in EmulatorContainer.BuildSenderLinkRegistryKeys(requestContext.Link.Session.Connection, entityName))
+                            {
+                                if (_senderLinkNames.TryGetValue(senderLinkKey, out var registeredPath))
+                                {
+                                    Log.LogDebug("schedule-message: resolved scoped link name '{LinkName}' → entity '{Entity}'", entityName, registeredPath);
+                                    address = registeredPath;
+                                    break;
+                                }
+                            }
                         }
 
-                        address ??= _scopedQueue?.Name;
+                        address ??= _scopedAddress ?? _scopedQueue?.Name;
 
                         if (string.IsNullOrEmpty(address))
                         {
@@ -260,11 +269,12 @@ public class ManagementLinkEndpoint : IRequestProcessor
     {
         if (_scheduledProcessor is not null && requestContext.Message.Body is Map body)
         {
+            var scheduleContext = ResolveNamespace(requestContext);
             if (TryGetMapValue(body, "sequence-numbers", out var seqNumbers) && seqNumbers is long[] numbers)
             {
                 foreach (var seqNo in numbers)
                 {
-                    _scheduledProcessor.CancelScheduled(seqNo);
+                    _scheduledProcessor.CancelScheduled(seqNo, scheduleContext);
                 }
             }
         }

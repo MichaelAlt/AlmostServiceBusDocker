@@ -9,10 +9,11 @@ namespace AlmostServiceBus.Core.Broker;
 /// </summary>
 public sealed class ScheduledMessageProcessor : IDisposable
 {
+    private readonly record struct ScheduledKey(string NamespaceName, long SequenceNumber);
     private record ScheduledEntry(string EntityName, BrokeredMessage Message, NamespaceContext Namespace);
 
     private readonly NamespaceContext _defaultNamespace;
-    private readonly ConcurrentDictionary<long, ScheduledEntry> _scheduled = new();
+    private readonly ConcurrentDictionary<ScheduledKey, ScheduledEntry> _scheduled = new();
 
     private CancellationTokenSource? _cts;
     private Task? _backgroundTask;
@@ -40,7 +41,7 @@ public sealed class ScheduledMessageProcessor : IDisposable
     {
         var seqNo = namespaceContext.NextSequenceNumber();
         message.SequenceNumber = seqNo;
-        _scheduled[seqNo] = new ScheduledEntry(entityName, message, namespaceContext);
+        _scheduled[new ScheduledKey(namespaceContext.Name, seqNo)] = new ScheduledEntry(entityName, message, namespaceContext);
         return seqNo;
     }
 
@@ -48,7 +49,10 @@ public sealed class ScheduledMessageProcessor : IDisposable
     /// Cancels a previously scheduled message. Returns <see langword="true"/> if found and removed.
     /// </summary>
     public bool CancelScheduled(long sequenceNumber) =>
-        _scheduled.TryRemove(sequenceNumber, out _);
+        CancelScheduled(sequenceNumber, _defaultNamespace);
+
+    public bool CancelScheduled(long sequenceNumber, NamespaceContext namespaceContext) =>
+        _scheduled.TryRemove(new ScheduledKey(namespaceContext.Name, sequenceNumber), out _);
 
     /// <summary>
     /// Checks all scheduled entries and delivers any whose enqueue time has arrived.
@@ -59,14 +63,14 @@ public sealed class ScheduledMessageProcessor : IDisposable
     {
         var now = DateTimeOffset.UtcNow;
 
-        foreach (var (seqNo, entry) in _scheduled)
+        foreach (var (key, entry) in _scheduled)
         {
             var scheduledTime = entry.Message.ScheduledEnqueueTimeUtc;
             if (scheduledTime.HasValue && scheduledTime.Value > now)
                 continue;
 
             // Remove from the scheduled store; if another thread beat us here, skip.
-            if (!_scheduled.TryRemove(seqNo, out _))
+            if (!_scheduled.TryRemove(key, out _))
                 continue;
 
             // Clear the scheduled time before delivery

@@ -49,6 +49,9 @@ public class CbsRequestProcessor : IRequestProcessor
             : null;
     }
 
+    internal static string? GetConnectionIdentityKey(Connection connection) =>
+        TryGetConnectionIdentityKey(connection);
+
     public static void RemoveConnection(Connection connection)
     {
         _connectionNamespaces.Remove(connection);

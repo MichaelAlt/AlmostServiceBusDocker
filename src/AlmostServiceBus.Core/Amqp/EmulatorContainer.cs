@@ -78,7 +78,7 @@ public class EmulatorContainer : IContainer
     /// </summary>
     public ManagementLinkEndpoint CreateManagementEndpoint(NamespaceContext context, ScheduledMessageProcessor? scheduledProcessor = null, QueueEntity? scopedQueue = null)
     {
-        return new ManagementLinkEndpoint(context, scheduledProcessor, scopedQueue: scopedQueue, senderLinkNames: _senderLinkNames, registry: _registry);
+        return new ManagementLinkEndpoint(context, scheduledProcessor, scopedAddress: scopedQueue?.Name, scopedQueue: scopedQueue, senderLinkNames: _senderLinkNames, registry: _registry);
     }
 
     /// <summary>
@@ -243,7 +243,8 @@ public class EmulatorContainer : IContainer
             && !address.Equals("$management", StringComparison.OrdinalIgnoreCase)
             && !address.Equals("$cbs", StringComparison.OrdinalIgnoreCase))
         {
-            _senderLinkNames[attach.LinkName] = address;
+            foreach (var key in BuildSenderLinkRegistryKeys(listenerLink.Session.Connection, attach.LinkName))
+                _senderLinkNames[key] = address;
         }
 
         if (_linkProcessor != null)
@@ -486,43 +487,73 @@ public class EmulatorContainer : IContainer
 
         NamespaceContext? context = null;
         QueueEntity? queue = null;
+        TopicEntity? topic = null;
 
         if (!string.IsNullOrWhiteSpace(preferredNamespaceName))
         {
             context = _registry.Get(preferredNamespaceName!);
             queue = context?.ResolveQueue(entityName);
+            topic = context?.GetTopic(entityName);
         }
 
-        if (queue is null)
+        if (queue is null && topic is null)
         {
             foreach (var nsName in _registry.ListNamespaces())
             {
                 var ns = _registry.Get(nsName);
                 if (ns is null) continue;
                 queue = ns.ResolveQueue(entityName);
-                if (queue is not null) { context = ns; break; }
+                topic = ns.GetTopic(entityName);
+                if (queue is not null || topic is not null) { context = ns; break; }
             }
         }
 
         if (context is null)
             context = _registry.GetOrCreate("default");
-        if (queue is null)
-            queue = context.ResolveQueue(entityName);
-        if (queue is not null)
+        if (queue is null && topic is null)
         {
-            Log.LogInformation("TryCreateEntityManagementEntry: Created entry for entity '{EntityName}', HasSessions={HasSessions}",
-                entityName, queue.Sessions is not null);
-            var processor = new ManagementLinkEndpoint(context, _scheduledProcessor, scopedQueue: queue, senderLinkNames: _senderLinkNames, registry: _registry);
+            queue = context.ResolveQueue(entityName);
+            topic = context.GetTopic(entityName);
+        }
+        if (queue is not null || topic is not null)
+        {
+            Log.LogInformation("TryCreateEntityManagementEntry: Created entry for entity '{EntityName}', HasSessions={HasSessions}, IsTopic={IsTopic}",
+                entityName, queue?.Sessions is not null, topic is not null);
+            var processor = new ManagementLinkEndpoint(context, _scheduledProcessor, scopedAddress: entityName, scopedQueue: queue, senderLinkNames: _senderLinkNames, registry: _registry);
             return new RequestProcessorEntry(processor);
         }
 
-        Log.LogWarning("TryCreateEntityManagementEntry: Queue not found for entity '{EntityName}'", entityName);
+        Log.LogWarning("TryCreateEntityManagementEntry: Entity not found for '{EntityName}'", entityName);
         return null;
     }
 
     private static string BuildEntityManagementProcessorKey(Connection connection, string address)
     {
         return $"{ResolveNamespace(connection)}|{address}";
+    }
+
+    internal static string BuildSenderLinkRegistryKey(Connection connection, string linkName)
+    {
+        var identityKey = CbsRequestProcessor.GetConnectionIdentityKey(connection);
+        if (!string.IsNullOrWhiteSpace(identityKey))
+            return $"{identityKey}|{linkName}";
+
+        return BuildNamespaceScopedSenderLinkRegistryKey(connection, linkName);
+    }
+
+    internal static string BuildNamespaceScopedSenderLinkRegistryKey(Connection connection, string linkName)
+    {
+        return $"{ResolveNamespace(connection)}|{linkName}";
+    }
+
+    internal static IEnumerable<string> BuildSenderLinkRegistryKeys(Connection connection, string linkName)
+    {
+        var primaryKey = BuildSenderLinkRegistryKey(connection, linkName);
+        yield return primaryKey;
+
+        var namespaceKey = BuildNamespaceScopedSenderLinkRegistryKey(connection, linkName);
+        if (!namespaceKey.Equals(primaryKey, StringComparison.Ordinal))
+            yield return namespaceKey;
     }
 
     private static string ResolveNamespace(Connection connection)
