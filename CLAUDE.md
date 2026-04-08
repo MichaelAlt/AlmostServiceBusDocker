@@ -106,11 +106,10 @@ git tag v0.1.0
 git push origin v0.1.0
 ```
 
-The `.github/workflows/release.yml` workflow triggers on `v*` tags and:
-1. Builds in Release configuration
-2. Runs all tests
-3. Packs three NuGet packages: `AlmostServiceBus`, `AlmostServiceBus.TestHost`, `AlmostServiceBus.Aspire.Hosting`
-4. Pushes to NuGet.org (requires `NUGET_API_KEY` secret)
+The `.github/workflows/ci.yml` workflow triggers on `v*` tags and:
+1. Runs the normal test matrix once
+2. Packs three NuGet packages: `AlmostServiceBus`, `AlmostServiceBus.TestHost`, `AlmostServiceBus.Aspire.Hosting`
+3. Pushes to NuGet.org (requires `NUGET_USER` for OIDC login)
 
 ### Version bumps
 

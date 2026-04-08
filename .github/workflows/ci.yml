@@ -3,7 +3,17 @@ name: CI
 on:
   push:
     branches: [main, develop]
+    tags: ['v*']
   pull_request:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing release tag to rebuild/publish (for example v0.1.1)
+        required: true
+        type: string
+
+env:
+  CHECKOUT_REF: ${{ github.event_name == 'workflow_dispatch' && format('refs/tags/{0}', inputs.tag) || github.ref }}
 
 jobs:
   # ── Internal test suite ─────────────────────────────────────────────────────
@@ -19,6 +29,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
+          ref: ${{ env.CHECKOUT_REF }}
           submodules: false
 
       - name: Setup .NET
@@ -83,6 +94,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
+          ref: ${{ env.CHECKOUT_REF }}
           submodules: false
 
       - name: Checkout Wolverine submodule
@@ -199,6 +211,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
+          ref: ${{ env.CHECKOUT_REF }}
           submodules: false
 
       - name: Checkout NServiceBus submodule
@@ -238,6 +251,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
+          ref: ${{ env.CHECKOUT_REF }}
           submodules: false
 
       - name: Checkout MassTransit submodule
@@ -334,3 +348,51 @@ jobs:
       - name: Stop emulator
         if: always()
         run: kill "$EMULATOR_PID" 2>/dev/null || true
+
+  pack-and-publish:
+    name: Pack & Publish
+    if: |
+      (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')) ||
+      (github.event_name == 'workflow_dispatch' && startsWith(inputs.tag, 'v'))
+    needs:
+      - internal-tests
+      - wolverine-conformance
+      - nservicebus-tests
+      - masstransit-conformance
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.CHECKOUT_REF }}
+          fetch-depth: 0  # MinVer needs full history to derive version from tags
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.x"
+
+      - name: Restore
+        run: dotnet restore AlmostServiceBus.sln
+
+      - name: Pack
+        run: |
+          dotnet pack src/AlmostServiceBus.Core --configuration Release --no-restore --output ./nupkgs
+          dotnet pack src/AlmostServiceBus.TestHost --configuration Release --no-restore --output ./nupkgs
+          dotnet pack src/AlmostServiceBus.Aspire.Hosting --configuration Release --no-restore --output ./nupkgs
+
+      - name: NuGet login (OIDC → temp API key)
+        uses: NuGet/login@v1
+        id: login
+        with:
+          user: ${{ secrets.NUGET_USER }}
+
+      - name: Push to NuGet.org
+        run: |
+          dotnet nuget push ./nupkgs/*.nupkg \
+            --api-key ${{ steps.login.outputs.NUGET_API_KEY }} \
+            --source https://api.nuget.org/v3/index.json \
+            --skip-duplicate
