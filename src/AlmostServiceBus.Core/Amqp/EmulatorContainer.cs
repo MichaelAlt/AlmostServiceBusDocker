@@ -173,7 +173,7 @@ public class EmulatorContainer : IContainer
                 if (entry is null && address.EndsWith("/$management", StringComparison.OrdinalIgnoreCase))
                 {
                     var entityName = address[..^"/$management".Length].TrimStart('/');
-                    var entityEntry = TryCreateEntityManagementEntry(entityName, ResolveNamespaceName(listenerLink.Session.Connection));
+                    var entityEntry = TryCreateEntityManagementEntry(entityName, ResolveNamespace(listenerLink.Session.Connection));
                     if (entityEntry is not null)
                     {
                         _requestProcessors[processorKey] = entityEntry;
@@ -214,7 +214,7 @@ public class EmulatorContainer : IContainer
                 if (entry is null && sourceAddress.EndsWith("/$management", StringComparison.OrdinalIgnoreCase))
                 {
                     var entityName = sourceAddress[..^"/$management".Length].TrimStart('/');
-                    var entityEntry = TryCreateEntityManagementEntry(entityName, ResolveNamespaceName(listenerLink.Session.Connection));
+                    var entityEntry = TryCreateEntityManagementEntry(entityName, ResolveNamespace(listenerLink.Session.Connection));
                     if (entityEntry is not null)
                     {
                         _requestProcessors[processorKey] = entityEntry;
@@ -522,10 +522,10 @@ public class EmulatorContainer : IContainer
 
     private static string BuildEntityManagementProcessorKey(Connection connection, string address)
     {
-        return $"{ResolveNamespaceName(connection)}|{address}";
+        return $"{ResolveNamespace(connection)}|{address}";
     }
 
-    private static string ResolveNamespaceName(Connection connection)
+    private static string ResolveNamespace(Connection connection)
     {
         var keyName = CbsRequestProcessor.GetNamespaceForConnection(connection);
         if (!string.IsNullOrWhiteSpace(keyName))
@@ -545,7 +545,7 @@ public class EmulatorContainer : IContainer
         }
         catch
         {
-            // Fall through to default.
+            // Reflection failed; fall through to the default namespace.
         }
 
         return "default";

@@ -15,7 +15,7 @@ namespace AlmostServiceBus.Core.Amqp;
 /// </summary>
 public class CbsRequestProcessor : IRequestProcessor
 {
-    private static readonly TimeSpan TokenExpiration = TimeSpan.FromHours(1);
+    private static readonly TimeSpan DefaultTokenExpiration = TimeSpan.FromHours(1);
 
     private sealed class NamespaceHolder(string value)
     {
@@ -94,7 +94,7 @@ public class CbsRequestProcessor : IRequestProcessor
                 // Include an expiration timestamp so the Azure SDK knows when to renew
                 // the token. Without this, some SDK versions may schedule immediate
                 // renewal, flooding the CBS link with requests.
-                ["expiration"] = DateTime.UtcNow.Add(TokenExpiration)
+                ["expiration"] = DateTime.UtcNow.Add(DefaultTokenExpiration)
             },
             Properties = new Properties
             {
