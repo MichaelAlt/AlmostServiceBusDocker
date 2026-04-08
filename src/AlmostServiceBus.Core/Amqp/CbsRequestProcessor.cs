@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Runtime.CompilerServices;
 using System.Text;
 using global::Amqp;
@@ -22,9 +23,11 @@ public class CbsRequestProcessor : IRequestProcessor
     }
 
     // Maps each live AMQP connection instance → namespace name extracted from SAS key name.
-    // ConditionalWeakTable uses object identity, so separate connections can never collide
-    // by hash code under heavy parallel test load.
+    // Keep both object-identity and hash-based lookups: in live AMQPNetLite traffic some
+    // callbacks can surface a different Connection wrapper instance for the same logical
+    // connection, while still preserving the hash code used by the older implementation.
     private static readonly ConditionalWeakTable<Connection, NamespaceHolder> _connectionNamespaces = new();
+    private static readonly ConcurrentDictionary<int, string> _connectionNamespaceHashes = new();
 
     // CBS links are long-lived and can see bursts of token renewals across many
     // parallel clients, so keep the request credit comfortably above the default.
@@ -32,23 +35,28 @@ public class CbsRequestProcessor : IRequestProcessor
 
     public static string? GetNamespaceForConnection(Connection connection)
     {
-        return _connectionNamespaces.TryGetValue(connection, out var holder) ? holder.Value : null;
+        if (_connectionNamespaces.TryGetValue(connection, out var holder))
+            return holder.Value;
+
+        return _connectionNamespaceHashes.TryGetValue(connection.GetHashCode(), out var ns) ? ns : null;
     }
 
     public static void RemoveConnection(Connection connection)
     {
         _connectionNamespaces.Remove(connection);
+        _connectionNamespaceHashes.TryRemove(connection.GetHashCode(), out _);
     }
 
     internal static void SetNamespaceForConnection(Connection connection, string? keyName)
     {
-        _connectionNamespaces.Remove(connection);
+        RemoveConnection(connection);
 
         if (string.IsNullOrEmpty(keyName)
             || keyName.Equals("RootManageSharedAccessKey", StringComparison.OrdinalIgnoreCase))
             return;
 
         _connectionNamespaces.Add(connection, new NamespaceHolder(keyName));
+        _connectionNamespaceHashes[connection.GetHashCode()] = keyName;
     }
 
     public void Process(RequestContext requestContext)
