@@ -572,8 +572,9 @@ public class EmulatorContainer : IContainer
             if (openProp?.GetValue(connection) is Open open && !string.IsNullOrEmpty(open.HostName))
             {
                 var host = open.HostName;
-                var namespaceName = host.Split('.')[0];
-                if (!namespaceName.Equals("localhost", StringComparison.OrdinalIgnoreCase))
+                var namespaceName = host.Split('.', 2)[0];
+                if (!string.IsNullOrWhiteSpace(namespaceName)
+                    && !namespaceName.Equals("localhost", StringComparison.OrdinalIgnoreCase))
                     return namespaceName;
             }
         }

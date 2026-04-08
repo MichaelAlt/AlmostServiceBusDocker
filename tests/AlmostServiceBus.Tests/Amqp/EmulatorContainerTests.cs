@@ -1,5 +1,4 @@
 using System.Reflection;
-using System.Runtime.CompilerServices;
 using Amqp;
 using AlmostServiceBus.Core.Amqp;
 using AlmostServiceBus.Core.Broker;
@@ -58,8 +57,8 @@ public class EmulatorContainerTests
     [Fact]
     public void EntityManagementProcessorKeys_AreNamespaceAware()
     {
-        var connection1 = NewConnectionInstance();
-        var connection2 = NewConnectionInstance();
+        var connection1 = TestConnectionFactory.NewConnectionInstance();
+        var connection2 = TestConnectionFactory.NewConnectionInstance();
 
         CbsRequestProcessor.SetNamespaceForConnection(connection1, "ns-1");
         CbsRequestProcessor.SetNamespaceForConnection(connection2, "ns-2");
@@ -81,8 +80,8 @@ public class EmulatorContainerTests
     [Fact]
     public void SenderLinkRegistryKeys_AreScopedByConnectionIdentity()
     {
-        var connection1 = NewConnectionInstance(containerId: "server-1", remoteContainerId: "client-1");
-        var connection2 = NewConnectionInstance(containerId: "server-2", remoteContainerId: "client-2");
+        var connection1 = TestConnectionFactory.NewConnectionInstance(containerId: "server-1", remoteContainerId: "client-1");
+        var connection2 = TestConnectionFactory.NewConnectionInstance(containerId: "server-2", remoteContainerId: "client-2");
 
         var method = typeof(EmulatorContainer).GetMethod("BuildSenderLinkRegistryKey",
             BindingFlags.Static | BindingFlags.NonPublic | BindingFlags.Public)!;
@@ -98,7 +97,7 @@ public class EmulatorContainerTests
     [Fact]
     public void SenderLinkRegistryKeys_AlsoIncludeNamespaceFallback()
     {
-        var connection = NewConnectionInstance(containerId: "server-1", remoteContainerId: "client-1");
+        var connection = TestConnectionFactory.NewConnectionInstance(containerId: "server-1", remoteContainerId: "client-1");
         CbsRequestProcessor.SetNamespaceForConnection(connection, "ns-1");
 
         var method = typeof(EmulatorContainer).GetMethod("BuildSenderLinkRegistryKeys",
@@ -109,21 +108,5 @@ public class EmulatorContainerTests
         Assert.Equal(["client-1|server-1|sender-link", "ns-1|sender-link"], keys);
 
         CbsRequestProcessor.RemoveConnection(connection);
-    }
-
-    private static Connection NewConnectionInstance(string? containerId = null, string? remoteContainerId = null)
-    {
-        var connection = (Connection)RuntimeHelpers.GetUninitializedObject(typeof(Connection));
-        var type = typeof(Connection);
-
-        if (containerId is not null)
-            type.GetField("<ContainerId>k__BackingField", BindingFlags.Instance | BindingFlags.NonPublic)!
-                .SetValue(connection, containerId);
-
-        if (remoteContainerId is not null)
-            type.GetField("<RemoteContainerId>k__BackingField", BindingFlags.Instance | BindingFlags.NonPublic)!
-                .SetValue(connection, remoteContainerId);
-
-        return connection;
     }
 }

@@ -1,9 +1,6 @@
 using Amqp;
 using Amqp.Framing;
 using AlmostServiceBus.Core.Amqp;
-using System.Reflection;
-using System.Runtime.CompilerServices;
-
 namespace AlmostServiceBus.Tests.Amqp;
 
 public class CbsRequestProcessorTests
@@ -18,8 +15,8 @@ public class CbsRequestProcessorTests
     [Fact]
     public void NamespaceMappings_AreTrackedPerConnectionInstance()
     {
-        var connection1 = NewConnectionInstance();
-        var connection2 = NewConnectionInstance();
+        var connection1 = TestConnectionFactory.NewConnectionInstance();
+        var connection2 = TestConnectionFactory.NewConnectionInstance();
 
         CbsRequestProcessor.SetNamespaceForConnection(connection1, "ns-1");
         CbsRequestProcessor.SetNamespaceForConnection(connection2, "ns-2");
@@ -34,7 +31,7 @@ public class CbsRequestProcessorTests
     [Fact]
     public void RootManageSharedAccessKey_ClearsCustomNamespaceMapping()
     {
-        var connection = NewConnectionInstance();
+        var connection = TestConnectionFactory.NewConnectionInstance();
 
         CbsRequestProcessor.SetNamespaceForConnection(connection, "isolated-ns");
         Assert.Equal("isolated-ns", CbsRequestProcessor.GetNamespaceForConnection(connection));
@@ -47,8 +44,8 @@ public class CbsRequestProcessorTests
     public void NamespaceMappings_FallBackToTransportIdentity()
     {
         var transport = new StubTransport();
-        var connection1 = NewConnectionInstance(transport);
-        var connection2 = NewConnectionInstance(transport);
+        var connection1 = TestConnectionFactory.NewConnectionInstance(transport);
+        var connection2 = TestConnectionFactory.NewConnectionInstance(transport);
 
         CbsRequestProcessor.SetNamespaceForConnection(connection1, "ns-transport");
 
@@ -61,8 +58,8 @@ public class CbsRequestProcessorTests
     [Fact]
     public void NamespaceMappings_FallBackToConnectionIdentity()
     {
-        var connection1 = NewConnectionInstance(containerId: "server-1", remoteContainerId: "client-1");
-        var connection2 = NewConnectionInstance(containerId: "server-1", remoteContainerId: "client-1");
+        var connection1 = TestConnectionFactory.NewConnectionInstance(containerId: "server-1", remoteContainerId: "client-1");
+        var connection2 = TestConnectionFactory.NewConnectionInstance(containerId: "server-1", remoteContainerId: "client-1");
 
         CbsRequestProcessor.SetNamespaceForConnection(connection1, "ns-identity");
 
@@ -70,29 +67,6 @@ public class CbsRequestProcessorTests
 
         CbsRequestProcessor.RemoveConnection(connection1);
         Assert.Null(CbsRequestProcessor.GetNamespaceForConnection(connection2));
-    }
-
-    // Use uninitialized Connection instances purely as distinct reference-identity
-    // keys for the CBS namespace table, without invoking any transport setup.
-    private static Connection NewConnectionInstance(ITransport? transport = null, string? containerId = null, string? remoteContainerId = null)
-    {
-        var connection = (Connection)RuntimeHelpers.GetUninitializedObject(typeof(Connection));
-        var type = typeof(Connection);
-        if (transport is not null)
-        {
-            type.GetField("writer", BindingFlags.Instance | BindingFlags.NonPublic)!
-                .SetValue(connection, transport);
-        }
-
-        if (containerId is not null)
-            type.GetField("<ContainerId>k__BackingField", BindingFlags.Instance | BindingFlags.NonPublic)!
-                .SetValue(connection, containerId);
-
-        if (remoteContainerId is not null)
-            type.GetField("<RemoteContainerId>k__BackingField", BindingFlags.Instance | BindingFlags.NonPublic)!
-                .SetValue(connection, remoteContainerId);
-
-        return connection;
     }
 
     private sealed class StubTransport : ITransport
