@@ -106,6 +106,7 @@ jobs:
             -f net10.0
 
       - name: Run Wolverine Azure Service Bus tests
+        timeout-minutes: 15
         run: |
           FILTER="FullyQualifiedName!~leader_election"             # Requires PostgreSQL
           FILTER="$FILTER&FullyQualifiedName!~Bug_1684_separated_handlers_and_conventional_routing"  # Flaky test
@@ -136,7 +137,8 @@ jobs:
             external/wolverine/src/Transports/Azure/Wolverine.AzureServiceBus.Tests/Wolverine.AzureServiceBus.Tests.csproj \
             --no-build \
             -f net10.0 \
-            --filter "$FILTER"
+            --filter "$FILTER" \
+            --logger "console;verbosity=normal"
 
       - name: Stop emulator
         if: always()
