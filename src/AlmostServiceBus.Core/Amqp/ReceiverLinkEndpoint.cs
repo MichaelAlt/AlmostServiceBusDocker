@@ -32,10 +32,21 @@ public class ReceiverLinkEndpoint : LinkEndpoint
         Log.LogDebug("FLOW queue='{Queue}' credit={Credit} drain={Drain}", _queue.Name, flowContext.Messages, flowContext.Link.IsDraining);
 
         // When the client sends drain=true, it wants to stop receiving.
-        // Complete the drain immediately so the client can close the link.
+        // Cancel the pump first, then complete the drain so the response
+        // Flow frame (credit=0) is sent after the pump has stopped sending.
         if (flowContext.Link.IsDraining)
         {
             _pumpCts?.Cancel();
+
+            // Wait briefly for the pump to actually stop before completing
+            // the drain, otherwise the pump may send a message concurrently
+            // with the drain response, confusing the Azure SDK.
+            if (_pumpTask is not null && !_pumpTask.IsCompleted)
+            {
+                try { _pumpTask.Wait(TimeSpan.FromSeconds(2)); }
+                catch { /* pump cancelled — expected */ }
+            }
+
             flowContext.Link.CompleteDrain();
             return;
         }
@@ -58,6 +69,10 @@ public class ReceiverLinkEndpoint : LinkEndpoint
         {
             while (!ct.IsCancellationRequested)
             {
+                // Stop if the link is draining (client wants to close).
+                if (link.IsDraining)
+                    break;
+
                 // Check AMQPNetLite's internal credit before dequeuing.
                 // The credit field is updated by AMQPNetLite when the client
                 // sends Flow frames (including after completing messages).

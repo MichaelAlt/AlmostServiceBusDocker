@@ -31,6 +31,11 @@ public class SessionReceiverLinkEndpoint : LinkEndpoint
         if (flowContext.Link.IsDraining)
         {
             _pumpCts?.Cancel();
+            if (_pumpTask is not null && !_pumpTask.IsCompleted)
+            {
+                try { _pumpTask.Wait(TimeSpan.FromSeconds(2)); }
+                catch { /* pump cancelled — expected */ }
+            }
             flowContext.Link.CompleteDrain();
             return;
         }
@@ -51,6 +56,9 @@ public class SessionReceiverLinkEndpoint : LinkEndpoint
         {
             while (!ct.IsCancellationRequested)
             {
+                if (link.IsDraining)
+                    break;
+
                 // Check AMQPNetLite's internal credit before dequeuing
                 if (ReceiverLinkEndpoint.GetLinkCreditStatic(link) <= 0)
                 {
