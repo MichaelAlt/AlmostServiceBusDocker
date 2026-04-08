@@ -77,6 +77,7 @@ public class SessionReceiverLinkEndpoint : LinkEndpoint
                 try
                 {
                     link.SendMessage(amqpMessage);
+                    await Task.Yield();
                 }
                 catch (Exception ex)
                 {

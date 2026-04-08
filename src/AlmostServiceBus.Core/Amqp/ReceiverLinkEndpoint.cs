@@ -82,6 +82,12 @@ public class ReceiverLinkEndpoint : LinkEndpoint
                     Log.LogDebug("PUMP {MessageId} → '{Queue}'", brokered.MessageId, _queue.Name);
                     var amqpMessage = ConvertToAmqpMessage(brokered);
                     link.SendMessage(amqpMessage);
+
+                    // Yield after each send to let the AMQP stack process the transfer
+                    // frame and update link credit. Without this, the pump loop can blast
+                    // messages faster than the credit is decremented, causing the consumer's
+                    // ServiceBusProcessor to release messages it can't process yet.
+                    await Task.Yield();
                 }
                 catch (Exception ex)
                 {
