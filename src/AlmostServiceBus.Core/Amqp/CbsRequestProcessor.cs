@@ -14,6 +14,8 @@ namespace AlmostServiceBus.Core.Amqp;
 /// </summary>
 public class CbsRequestProcessor : IRequestProcessor
 {
+    private static readonly TimeSpan TokenExpiration = TimeSpan.FromHours(1);
+
     private sealed class NamespaceHolder(string value)
     {
         public string Value { get; } = value;
@@ -24,6 +26,8 @@ public class CbsRequestProcessor : IRequestProcessor
     // by hash code under heavy parallel test load.
     private static readonly ConditionalWeakTable<Connection, NamespaceHolder> _connectionNamespaces = new();
 
+    // CBS links are long-lived and can see bursts of token renewals across many
+    // parallel clients, so keep the request credit comfortably high.
     public int Credit => 10000;
 
     public static string? GetNamespaceForConnection(Connection connection)
@@ -60,7 +64,7 @@ public class CbsRequestProcessor : IRequestProcessor
                 // Include an expiration timestamp so the Azure SDK knows when to renew
                 // the token. Without this, some SDK versions may schedule immediate
                 // renewal, flooding the CBS link with requests.
-                ["expiration"] = DateTime.UtcNow.AddHours(1)
+                ["expiration"] = DateTime.UtcNow.Add(TokenExpiration)
             },
             Properties = new Properties
             {

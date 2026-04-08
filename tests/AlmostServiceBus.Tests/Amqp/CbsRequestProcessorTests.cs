@@ -42,6 +42,8 @@ public class CbsRequestProcessorTests
         Assert.Null(CbsRequestProcessor.GetNamespaceForConnection(connection));
     }
 
+    // Use uninitialized Connection instances purely as distinct reference-identity
+    // keys for the CBS namespace table, without invoking any transport setup.
     private static Connection NewConnectionInstance() =>
         (Connection)RuntimeHelpers.GetUninitializedObject(typeof(Connection));
 }
