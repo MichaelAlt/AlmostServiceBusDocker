@@ -65,12 +65,10 @@ jobs:
       - name: Checkout Wolverine submodule
         run: git submodule update --init --depth 1 external/wolverine
 
-      - name: Setup .NET (9 for Wolverine tests, 10 for emulator host)
+      - name: Setup .NET
         uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: |
-            9.x
-            10.x
+          dotnet-version: "10.x"
 
       # The emulator host calls LoadDevCert() at startup, so the cert must
       # exist in the CurrentUser/My store even though Wolverine tests bypass TLS.
@@ -105,7 +103,7 @@ jobs:
           dotnet build \
             external/wolverine/src/Transports/Azure/Wolverine.AzureServiceBus.Tests/Wolverine.AzureServiceBus.Tests.csproj \
             --no-restore \
-            -f net9.0
+            -f net10.0
 
       - name: Run Wolverine Azure Service Bus tests
         run: |
@@ -137,7 +135,7 @@ jobs:
           dotnet test \
             external/wolverine/src/Transports/Azure/Wolverine.AzureServiceBus.Tests/Wolverine.AzureServiceBus.Tests.csproj \
             --no-build \
-            -f net9.0 \
+            -f net10.0 \
             --filter "$FILTER"
 
       - name: Stop emulator
@@ -194,12 +192,10 @@ jobs:
       - name: Checkout MassTransit submodule
         run: git submodule update --init --depth 1 external/MassTransit
 
-      - name: Setup .NET (9 for MT tests, 10 for emulator host)
+      - name: Setup .NET
         uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: |
-            9.x
-            10.x
+          dotnet-version: "10.x"
 
       # Trust the dev cert so the Azure SDK accepts AMQPS connections to localhost.
       - name: Trust HTTPS dev certificate
@@ -237,7 +233,7 @@ jobs:
         run: |
           dotnet build \
             external/MassTransit/tests/MassTransit.Azure.ServiceBus.Core.Tests \
-            -f net9.0
+            -f net10.0
 
       - name: Run MassTransit Azure Service Bus tests
         env:
@@ -271,7 +267,7 @@ jobs:
           dotnet test \
             external/MassTransit/tests/MassTransit.Azure.ServiceBus.Core.Tests \
             --no-build \
-            -f net9.0 \
+            -f net10.0 \
             --filter "$FILTER" \
             --logger "console;verbosity=normal"
 
