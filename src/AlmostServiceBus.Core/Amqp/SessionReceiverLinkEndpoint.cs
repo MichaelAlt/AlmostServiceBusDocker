@@ -30,13 +30,8 @@ public class SessionReceiverLinkEndpoint : LinkEndpoint
     {
         if (flowContext.Link.IsDraining)
         {
-            _pumpCts?.Cancel();
-            if (_pumpTask is not null && !_pumpTask.IsCompleted)
-            {
-                try { _pumpTask.Wait(TimeSpan.FromSeconds(2)); }
-                catch { /* pump cancelled — expected */ }
-            }
             flowContext.Link.CompleteDrain();
+            _pumpCts?.Cancel();
             return;
         }
 

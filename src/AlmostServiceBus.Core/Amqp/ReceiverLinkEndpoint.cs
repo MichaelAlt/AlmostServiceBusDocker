@@ -36,18 +36,12 @@ public class ReceiverLinkEndpoint : LinkEndpoint
         // Flow frame (credit=0) is sent after the pump has stopped sending.
         if (flowContext.Link.IsDraining)
         {
-            _pumpCts?.Cancel();
-
-            // Wait briefly for the pump to actually stop before completing
-            // the drain, otherwise the pump may send a message concurrently
-            // with the drain response, confusing the Azure SDK.
-            if (_pumpTask is not null && !_pumpTask.IsCompleted)
-            {
-                try { _pumpTask.Wait(TimeSpan.FromSeconds(2)); }
-                catch { /* pump cancelled — expected */ }
-            }
-
+            // Complete the drain IMMEDIATELY — send Flow(credit=0) back to the
+            // consumer before doing anything else. If we delay (e.g. waiting for
+            // the pump to stop), the link may start detaching and CompleteDrain's
+            // internal SendFlow becomes a no-op (it checks !IsDetaching).
             flowContext.Link.CompleteDrain();
+            _pumpCts?.Cancel();
             return;
         }
 
