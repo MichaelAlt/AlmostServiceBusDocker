@@ -18,16 +18,33 @@ public class ManagementLinkEndpoint : IRequestProcessor
     private static readonly ILogger Log = AmqpLog.CreateLogger<ManagementLinkEndpoint>();
 
     private readonly NamespaceContext _context;
+    private readonly NamespaceRegistry? _registry;
     private readonly ScheduledMessageProcessor? _scheduledProcessor;
     private readonly QueueEntity? _scopedQueue;
     private readonly ConcurrentDictionary<string, string>? _senderLinkNames;
 
-    public ManagementLinkEndpoint(NamespaceContext context, ScheduledMessageProcessor? scheduledProcessor = null, QueueEntity? scopedQueue = null, ConcurrentDictionary<string, string>? senderLinkNames = null)
+    public ManagementLinkEndpoint(NamespaceContext context, ScheduledMessageProcessor? scheduledProcessor = null, QueueEntity? scopedQueue = null, ConcurrentDictionary<string, string>? senderLinkNames = null, NamespaceRegistry? registry = null)
     {
         _context = context;
+        _registry = registry;
         _scheduledProcessor = scheduledProcessor;
         _scopedQueue = scopedQueue;
         _senderLinkNames = senderLinkNames;
+    }
+
+    /// <summary>
+    /// Resolves the namespace context for the given request by looking up the AMQP connection's
+    /// CBS-authenticated namespace. Falls back to <see cref="_context"/> when the registry is
+    /// unavailable or no per-connection namespace has been registered.
+    /// </summary>
+    private NamespaceContext ResolveNamespace(RequestContext requestContext)
+    {
+        if (_registry is null)
+            return _context;
+
+        var connection = requestContext.Link.Session.Connection;
+        var keyName = CbsRequestProcessor.GetNamespaceForConnection(connection);
+        return keyName is not null ? _registry.GetOrCreate(keyName) : _context;
     }
 
     public void Process(RequestContext requestContext)
@@ -79,6 +96,12 @@ public class ManagementLinkEndpoint : IRequestProcessor
 
         if (_scheduledProcessor is not null && requestContext.Message.Body is Map scheduleBody)
         {
+            // Resolve the namespace for this request from the connection's CBS authentication.
+            // The global $management endpoint uses a shared defaultContext, but each
+            // per-namespace client has its entities in its own namespace. Using the connection's
+            // namespace ensures entities are found and scheduled messages are delivered correctly.
+            var scheduleContext = ResolveNamespace(requestContext);
+
             var entityName = requestContext.Message.ApplicationProperties?["associated-link-name"]?.ToString();
 
             if (TryGetMapValue(scheduleBody, "messages", out var messagesObj) && messagesObj is List messagesList)
@@ -115,7 +138,7 @@ public class ManagementLinkEndpoint : IRequestProcessor
                         string? address = null;
                         if (!string.IsNullOrEmpty(candidateAddress))
                         {
-                            var (resolvedQueue, resolvedTopic) = _context.ResolveSendTarget(candidateAddress);
+                            var (resolvedQueue, resolvedTopic) = scheduleContext.ResolveSendTarget(candidateAddress);
                             if (resolvedQueue is not null || resolvedTopic is not null)
                                 address = candidateAddress;
                         }
@@ -137,7 +160,7 @@ public class ManagementLinkEndpoint : IRequestProcessor
                             continue;
                         }
 
-                        var seqNo = _scheduledProcessor.Schedule(address, brokered, _context);
+                        var seqNo = _scheduledProcessor.Schedule(address, brokered, scheduleContext);
                         sequenceNumbers.Add(seqNo);
                     }
                 }

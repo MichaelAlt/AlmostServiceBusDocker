@@ -78,7 +78,7 @@ public class EmulatorContainer : IContainer
     /// </summary>
     public ManagementLinkEndpoint CreateManagementEndpoint(NamespaceContext context, ScheduledMessageProcessor? scheduledProcessor = null, QueueEntity? scopedQueue = null)
     {
-        return new ManagementLinkEndpoint(context, scheduledProcessor, scopedQueue: scopedQueue, senderLinkNames: _senderLinkNames);
+        return new ManagementLinkEndpoint(context, scheduledProcessor, scopedQueue: scopedQueue, senderLinkNames: _senderLinkNames, registry: _registry);
     }
 
     /// <summary>
@@ -490,7 +490,7 @@ public class EmulatorContainer : IContainer
         {
             Log.LogInformation("TryCreateEntityManagementEntry: Created entry for entity '{EntityName}', HasSessions={HasSessions}",
                 entityName, queue.Sessions is not null);
-            var processor = new ManagementLinkEndpoint(context, _scheduledProcessor, scopedQueue: queue, senderLinkNames: _senderLinkNames);
+            var processor = new ManagementLinkEndpoint(context, _scheduledProcessor, scopedQueue: queue, senderLinkNames: _senderLinkNames, registry: _registry);
             return new RequestProcessorEntry(processor);
         }
 
