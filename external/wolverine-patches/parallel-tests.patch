@@ -1,0 +1,953 @@
+diff --git a/src/Servers.cs b/src/Servers.cs
+index 85d2071..02ea9e6 100644
+--- a/src/Servers.cs
++++ b/src/Servers.cs
+@@ -25,4 +25,18 @@ public class Servers
+ 
+     public static readonly string AzureServiceBusTenantManagementConnectionString =
+         "Endpoint=sb://localhost:5301;SharedAccessKeyName=RootManageSharedAccessKey;SharedAccessKey=SAS_KEY_VALUE;UseDevelopmentEmulator=true;";
++
++    /// <summary>
++    /// Build a namespace-scoped AMQP connection string for test isolation.
++    /// The namespace is encoded in SharedAccessKeyName so the emulator routes
++    /// to a dedicated in-memory namespace.
++    /// </summary>
++    public static string AzureServiceBusConnectionStringForNamespace(string ns) =>
++        $"Endpoint=sb://localhost:5673;SharedAccessKeyName={ns};SharedAccessKey=SAS_KEY_VALUE;UseDevelopmentEmulator=true;";
++
++    /// <summary>
++    /// Build a namespace-scoped management (HTTP) connection string for test isolation.
++    /// </summary>
++    public static string AzureServiceBusManagementConnectionStringForNamespace(string ns) =>
++        $"Endpoint=sb://localhost:5300;SharedAccessKeyName={ns};SharedAccessKey=SAS_KEY_VALUE;UseDevelopmentEmulator=true;";
+ }
+\ No newline at end of file
+diff --git a/src/Transports/Azure/Wolverine.AzureServiceBus.Tests/AzureServiceBusTesting.cs b/src/Transports/Azure/Wolverine.AzureServiceBus.Tests/AzureServiceBusTesting.cs
+index 5b9d4c0..4d30da8 100644
+--- a/src/Transports/Azure/Wolverine.AzureServiceBus.Tests/AzureServiceBusTesting.cs
++++ b/src/Transports/Azure/Wolverine.AzureServiceBus.Tests/AzureServiceBusTesting.cs
+@@ -5,16 +5,12 @@ namespace Wolverine.AzureServiceBus.Tests;
+ 
+ public static class AzureServiceBusTesting
+ {
+-    private static bool _cleaned;
+-
++    /// <summary>
++    /// Configure Azure Service Bus testing with the default (shared) namespace.
++    /// Kept for backward compatibility with tests that don't need isolation.
++    /// </summary>
+     public static AzureServiceBusConfiguration UseAzureServiceBusTesting(this WolverineOptions options)
+     {
+-        if (!_cleaned)
+-        {
+-            _cleaned = true;
+-            DeleteAllEmulatorObjectsAsync().GetAwaiter().GetResult();
+-        }
+-
+         var config = options.UseAzureServiceBus(Servers.AzureServiceBusConnectionString);
+ 
+         var transport = options.Transports.GetOrCreate<AzureServiceBusTransport>();
+@@ -23,9 +19,53 @@ public static class AzureServiceBusTesting
+         return config.AutoProvision();
+     }
+ 
+-    public static async Task DeleteAllEmulatorObjectsAsync()
++    /// <summary>
++    /// Configure Azure Service Bus testing with a per-test-class isolated namespace.
++    /// Each caller gets a unique namespace so parallel tests don't interfere.
++    /// </summary>
++    public static AzureServiceBusConfiguration UseAzureServiceBusTesting(this WolverineOptions options, out string ns)
++    {
++        ns = Guid.NewGuid().ToString("N")[..20];
++        return UseAzureServiceBusTestingWithNamespace(options, ns);
++    }
++
++    /// <summary>
++    /// Configure Azure Service Bus testing with a specific namespace.
++    /// Useful when sender and receiver hosts in the same test must share a namespace.
++    /// </summary>
++    public static AzureServiceBusConfiguration UseAzureServiceBusTestingWithNamespace(this WolverineOptions options, string ns)
++    {
++        var connStr = Servers.AzureServiceBusConnectionStringForNamespace(ns);
++        var mgmtConnStr = Servers.AzureServiceBusManagementConnectionStringForNamespace(ns);
++
++        var config = options.UseAzureServiceBus(connStr);
++
++        var transport = options.Transports.GetOrCreate<AzureServiceBusTransport>();
++        transport.ManagementConnectionString = mgmtConnStr;
++
++        return config.AutoProvision();
++    }
++
++    /// <summary>
++    /// Delete all emulator objects in the default namespace.
++    /// </summary>
++    public static Task DeleteAllEmulatorObjectsAsync()
++    {
++        return DeleteEntitiesAsync(Servers.AzureServiceBusManagementConnectionString);
++    }
++
++    /// <summary>
++    /// Delete all emulator objects in a specific namespace (by namespace ID).
++    /// </summary>
++    public static Task DeleteAllEmulatorObjectsAsync(string ns)
++    {
++        var mgmtConnStr = Servers.AzureServiceBusManagementConnectionStringForNamespace(ns);
++        return DeleteEntitiesAsync(mgmtConnStr);
++    }
++
++    private static async Task DeleteEntitiesAsync(string managementConnectionString)
+     {
+-        var client = new ServiceBusAdministrationClient(Servers.AzureServiceBusManagementConnectionString);
++        var client = new ServiceBusAdministrationClient(managementConnectionString);
+ 
+         await foreach (var topic in client.GetTopicsAsync())
+         {
+diff --git a/src/Transports/Azure/Wolverine.AzureServiceBus.Tests/BufferedSendingAndReceivingCompliance.cs b/src/Transports/Azure/Wolverine.AzureServiceBus.Tests/BufferedSendingAndReceivingCompliance.cs
+index 2306792..6d1353b 100644
+--- a/src/Transports/Azure/Wolverine.AzureServiceBus.Tests/BufferedSendingAndReceivingCompliance.cs
++++ b/src/Transports/Azure/Wolverine.AzureServiceBus.Tests/BufferedSendingAndReceivingCompliance.cs
+@@ -10,6 +10,8 @@ namespace Wolverine.AzureServiceBus.Tests;
+ 
+ public class BufferedComplianceFixture : TransportComplianceFixture, IAsyncLifetime
+ {
++    private string _ns = null!;
++
+     public BufferedComplianceFixture() : base(new Uri("asb://queue/buffered-receiver"), 120)
+     {
+     }
+@@ -21,14 +23,12 @@ public class BufferedComplianceFixture : TransportComplianceFixture, IAsyncLifet
+ 
+         await SenderIs(opts =>
+         {
+-            opts.UseAzureServiceBusTesting()
+-                .AutoProvision();
++            opts.UseAzureServiceBusTesting(out _ns);
+         });
+ 
+         await ReceiverIs(opts =>
+         {
+-            opts.UseAzureServiceBusTesting()
+-                .AutoProvision();
++            opts.UseAzureServiceBusTestingWithNamespace(_ns);
+ 
+             opts.ListenToAzureServiceBusQueue(queueName, q => q.Options.AutoDeleteOnIdle = 5.Minutes()).BufferedInMemory();
+         });
+@@ -41,7 +41,7 @@ public class BufferedComplianceFixture : TransportComplianceFixture, IAsyncLifet
+ 
+     protected override Task AfterDisposeAsync()
+     {
+-        return AzureServiceBusTesting.DeleteAllEmulatorObjectsAsync();
++        return AzureServiceBusTesting.DeleteAllEmulatorObjectsAsync(_ns);
+     }
+ }
+ 
+diff --git a/src/Transports/Azure/Wolverine.AzureServiceBus.Tests/Bugs/Bug_1684_separated_handlers_and_conventional_routing.cs b/src/Transports/Azure/Wolverine.AzureServiceBus.Tests/Bugs/Bug_1684_separated_handlers_and_conventional_routing.cs
+index f6967c3..a3fa948 100644
+--- a/src/Transports/Azure/Wolverine.AzureServiceBus.Tests/Bugs/Bug_1684_separated_handlers_and_conventional_routing.cs
++++ b/src/Transports/Azure/Wolverine.AzureServiceBus.Tests/Bugs/Bug_1684_separated_handlers_and_conventional_routing.cs
+@@ -13,9 +13,15 @@ namespace Wolverine.AzureServiceBus.Tests.Bugs;
+ [Trait("Category", "Flaky")]
+ public class Bug_1684_separated_handlers_and_conventional_routing(ITestOutputHelper Output) : IAsyncLifetime
+ {
+-    public Task InitializeAsync() => Task.CompletedTask;
++    private string _ns = null!;
+ 
+-    public Task DisposeAsync() => AzureServiceBusTesting.DeleteAllEmulatorObjectsAsync();
++    public Task InitializeAsync()
++    {
++        _ns = Guid.NewGuid().ToString("N")[..20];
++        return Task.CompletedTask;
++    }
++
++    public Task DisposeAsync() => AzureServiceBusTesting.DeleteAllEmulatorObjectsAsync(_ns);
+ 
+     [Fact]
+     public async Task try_it_and_send_to_multiple_topic_subscriptions()
+@@ -23,8 +29,7 @@ public class Bug_1684_separated_handlers_and_conventional_routing(ITestOutputHel
+         using var host = await Host.CreateDefaultBuilder()
+             .UseWolverine(opts =>
+             {
+-                opts.UseAzureServiceBusTesting()
+-                    .AutoProvision()
++                opts.UseAzureServiceBusTestingWithNamespace(_ns)
+                     .AutoPurgeOnStartup()
+                     .UseTopicAndSubscriptionConventionalRouting(x =>
+                     {
+diff --git a/src/Transports/Azure/Wolverine.AzureServiceBus.Tests/Bugs/Bug_1933_multi_tenant_conventional_routing.cs b/src/Transports/Azure/Wolverine.AzureServiceBus.Tests/Bugs/Bug_1933_multi_tenant_conventional_routing.cs
+index 607dc43..a15ba99 100644
+--- a/src/Transports/Azure/Wolverine.AzureServiceBus.Tests/Bugs/Bug_1933_multi_tenant_conventional_routing.cs
++++ b/src/Transports/Azure/Wolverine.AzureServiceBus.Tests/Bugs/Bug_1933_multi_tenant_conventional_routing.cs
+@@ -20,20 +20,17 @@ public static class Bug1933MessageHandler
+ [Trait("Category", "Flaky")]
+ public class Bug_1933_multi_tenant_conventional_routing : IAsyncLifetime
+ {
+-    public Task InitializeAsync() => Task.CompletedTask;
++    private string _ns = null!;
+ 
+-    public async Task DisposeAsync()
++    public Task InitializeAsync()
+     {
+-        await AzureServiceBusTesting.DeleteAllEmulatorObjectsAsync();
++        _ns = Guid.NewGuid().ToString("N")[..20];
++        return Task.CompletedTask;
++    }
+ 
+-        try
+-        {
+-            await DeleteTenantEmulatorObjectsAsync();
+-        }
+-        catch
+-        {
+-            // Tenant emulator cleanup is best-effort
+-        }
++    public async Task DisposeAsync()
++    {
++        await AzureServiceBusTesting.DeleteAllEmulatorObjectsAsync(_ns);
+     }
+ 
+     private static async Task DeleteTenantEmulatorObjectsAsync()
+@@ -54,6 +51,8 @@ public class Bug_1933_multi_tenant_conventional_routing : IAsyncLifetime
+     [Fact]
+     public async Task should_receive_message_when_published_without_tenant_id()
+     {
++        var connStr = Servers.AzureServiceBusConnectionStringForNamespace(_ns);
++
+         // Single host: tenants + conventional routing (reproduces bug #1933)
+         using var host = await Host.CreateDefaultBuilder()
+             .UseWolverine(opts =>
+@@ -61,15 +60,15 @@ public class Bug_1933_multi_tenant_conventional_routing : IAsyncLifetime
+                 opts.ServiceName = "sender";
+                 opts.Policies.DisableConventionalLocalRouting();
+ 
+-                opts.UseAzureServiceBusTesting()
++                opts.UseAzureServiceBusTestingWithNamespace(_ns)
+                     .AutoPurgeOnStartup()
+-                    .AddTenantByConnectionString("test", Servers.AzureServiceBusConnectionString)
++                    .AddTenantByConnectionString("test", connStr)
+                     .UseConventionalRouting();
+ 
+                 // Set the tenant's management connection string for the emulator
+                 var transport = opts.Transports.GetOrCreate<AzureServiceBusTransport>();
+                 transport.Tenants["test"].Transport.ManagementConnectionString =
+-                    Servers.AzureServiceBusConnectionString;
++                    Servers.AzureServiceBusManagementConnectionStringForNamespace(_ns);
+             }).StartAsync();
+ 
+         var message = new Bug1933Message("Hello from default namespace");
+@@ -94,7 +93,7 @@ public class Bug_1933_multi_tenant_conventional_routing : IAsyncLifetime
+                 opts.ServiceName = "sender";
+                 opts.Policies.DisableConventionalLocalRouting();
+ 
+-                opts.UseAzureServiceBusTesting()
++                opts.UseAzureServiceBusTestingWithNamespace(_ns)
+                     .AutoPurgeOnStartup()
+                     .UseConventionalRouting();
+             }).StartAsync();
+diff --git a/src/Transports/Azure/Wolverine.AzureServiceBus.Tests/Bugs/Bug_2283_purge_session_subscription.cs b/src/Transports/Azure/Wolverine.AzureServiceBus.Tests/Bugs/Bug_2283_purge_session_subscription.cs
+index 3818a3e..a9d1896 100644
+--- a/src/Transports/Azure/Wolverine.AzureServiceBus.Tests/Bugs/Bug_2283_purge_session_subscription.cs
++++ b/src/Transports/Azure/Wolverine.AzureServiceBus.Tests/Bugs/Bug_2283_purge_session_subscription.cs
+@@ -10,6 +10,7 @@ namespace Wolverine.AzureServiceBus.Tests.Bugs;
+ public class Bug_2283_purge_session_subscription : IAsyncLifetime
+ {
+     private IHost _host = null!;
++    private string _ns = null!;
+ 
+     public async Task InitializeAsync()
+     {
+@@ -19,8 +20,7 @@ public class Bug_2283_purge_session_subscription : IAsyncLifetime
+         _host = await Host.CreateDefaultBuilder()
+             .UseWolverine(opts =>
+             {
+-                opts.UseAzureServiceBusTesting()
+-                    .AutoProvision()
++                opts.UseAzureServiceBusTesting(out _ns)
+                     .AutoPurgeOnStartup();
+ 
+                 opts.PublishMessage<Bug2283Message>()
+@@ -38,7 +38,7 @@ public class Bug_2283_purge_session_subscription : IAsyncLifetime
+     {
+         await _host.StopAsync();
+         _host.Dispose();
+-        await AzureServiceBusTesting.DeleteAllEmulatorObjectsAsync();
++        await AzureServiceBusTesting.DeleteAllEmulatorObjectsAsync(_ns);
+     }
+ 
+     [Fact]
+@@ -83,8 +83,7 @@ public class Bug_2283_purge_session_subscription : IAsyncLifetime
+         using var host2 = await Host.CreateDefaultBuilder()
+             .UseWolverine(opts =>
+             {
+-                opts.UseAzureServiceBusTesting()
+-                    .AutoProvision()
++                opts.UseAzureServiceBusTestingWithNamespace(_ns)
+                     .AutoPurgeOnStartup();
+ 
+                 opts.PublishMessage<Bug2283Message>()
+diff --git a/src/Transports/Azure/Wolverine.AzureServiceBus.Tests/Bugs/Bug_2307_batching_with_conventional_routing.cs b/src/Transports/Azure/Wolverine.AzureServiceBus.Tests/Bugs/Bug_2307_batching_with_conventional_routing.cs
+index 5c0d1d6..afcb888 100644
+--- a/src/Transports/Azure/Wolverine.AzureServiceBus.Tests/Bugs/Bug_2307_batching_with_conventional_routing.cs
++++ b/src/Transports/Azure/Wolverine.AzureServiceBus.Tests/Bugs/Bug_2307_batching_with_conventional_routing.cs
+@@ -14,15 +14,15 @@ namespace Wolverine.AzureServiceBus.Tests.Bugs;
+ public class Bug_2307_batching_with_conventional_routing : IAsyncLifetime
+ {
+     private IHost _host = null!;
++    private string _ns = null!;
+ 
+     public async Task InitializeAsync()
+     {
+         _host = await Host.CreateDefaultBuilder()
+             .UseWolverine(opts =>
+             {
+-                opts.UseAzureServiceBusTesting()
+-                    .UseConventionalRouting(x => x.IncludeTypes(t => t == typeof(BatchedItem)))
+-                    .AutoProvision();
++                opts.UseAzureServiceBusTesting(out _ns)
++                    .UseConventionalRouting(x => x.IncludeTypes(t => t == typeof(BatchedItem)));
+ 
+                 opts.BatchMessagesOf<BatchedItem>(batching =>
+                 {
+@@ -38,7 +38,7 @@ public class Bug_2307_batching_with_conventional_routing : IAsyncLifetime
+     {
+         if (_host != null) await _host.StopAsync();
+         _host?.Dispose();
+-        await AzureServiceBusTesting.DeleteAllEmulatorObjectsAsync();
++        await AzureServiceBusTesting.DeleteAllEmulatorObjectsAsync(_ns);
+     }
+ 
+     [Fact]
+diff --git a/src/Transports/Azure/Wolverine.AzureServiceBus.Tests/ConventionalRouting/Broadcasting/end_to_end_with_conventional_routing.cs b/src/Transports/Azure/Wolverine.AzureServiceBus.Tests/ConventionalRouting/Broadcasting/end_to_end_with_conventional_routing.cs
+index 323c6f5..b57f2ea 100644
+--- a/src/Transports/Azure/Wolverine.AzureServiceBus.Tests/ConventionalRouting/Broadcasting/end_to_end_with_conventional_routing.cs
++++ b/src/Transports/Azure/Wolverine.AzureServiceBus.Tests/ConventionalRouting/Broadcasting/end_to_end_with_conventional_routing.cs
+@@ -12,18 +12,21 @@ public class end_to_end_with_conventional_routing : IAsyncLifetime
+ {
+     private IHost _receiver = null!;
+     private IHost _sender = null!;
++    private string _ns = null!;
+ 
+     public Task InitializeAsync()
+     {
++        _ns = Guid.NewGuid().ToString("N")[..20];
++
+         _sender = WolverineHost.For(opts =>
+         {
+-            opts.UseAzureServiceBusTesting().UseTopicAndSubscriptionConventionalRouting(x =>
++            opts.UseAzureServiceBusTestingWithNamespace(_ns).UseTopicAndSubscriptionConventionalRouting(x =>
+             {
+                 // Can't use the full name because of limitations on name length
+                 x.SubscriptionNameForListener(t => t.Name.ToLowerInvariant());
+                 x.TopicNameForListener(t => t.Name.ToLowerInvariant());
+                 x.TopicNameForSender(t => t.Name.ToLowerInvariant());
+-            }).AutoProvision().AutoPurgeOnStartup();
++            }).AutoPurgeOnStartup();
+             opts.DisableConventionalDiscovery();
+             opts.ServiceName = "Sender";
+         });
+@@ -32,7 +35,7 @@ public class end_to_end_with_conventional_routing : IAsyncLifetime
+         {
+             #region sample_using_topic_and_subscription_conventional_routing_with_azure_service_bus
+ 
+-            opts.UseAzureServiceBusTesting()
++            opts.UseAzureServiceBusTestingWithNamespace(_ns)
+                 .UseTopicAndSubscriptionConventionalRouting(convention =>
+                 {
+                     // Optionally control every aspect of the convention and
+@@ -46,7 +49,6 @@ public class end_to_end_with_conventional_routing : IAsyncLifetime
+                     convention.TopicNameForSender(t => t.Name.ToLowerInvariant());
+                 })
+ 
+-                .AutoProvision()
+                 .AutoPurgeOnStartup();
+ 
+             #endregion
+@@ -63,7 +65,7 @@ public class end_to_end_with_conventional_routing : IAsyncLifetime
+         if (_receiver != null) await _receiver.StopAsync();
+         _sender?.Dispose();
+         _receiver?.Dispose();
+-        await AzureServiceBusTesting.DeleteAllEmulatorObjectsAsync();
++        await AzureServiceBusTesting.DeleteAllEmulatorObjectsAsync(_ns);
+     }
+ 
+     [Fact]
+diff --git a/src/Transports/Azure/Wolverine.AzureServiceBus.Tests/ConventionalRouting/ConventionalRoutingContext.cs b/src/Transports/Azure/Wolverine.AzureServiceBus.Tests/ConventionalRouting/ConventionalRoutingContext.cs
+index f9f9d50..d0ffb08 100644
+--- a/src/Transports/Azure/Wolverine.AzureServiceBus.Tests/ConventionalRouting/ConventionalRoutingContext.cs
++++ b/src/Transports/Azure/Wolverine.AzureServiceBus.Tests/ConventionalRouting/ConventionalRoutingContext.cs
+@@ -11,13 +11,16 @@ namespace Wolverine.AzureServiceBus.Tests.ConventionalRouting;
+ public abstract class ConventionalRoutingContext : IAsyncLifetime
+ {
+     private IHost _host = null!;
++    // Initialize _ns eagerly — derived class constructors access theRuntime
++    // (which uses _ns) before IAsyncLifetime.InitializeAsync() runs.
++    private readonly string _ns = Guid.NewGuid().ToString("N")[..20];
+ 
+     internal IWolverineRuntime theRuntime
+     {
+         get
+         {
+             _host ??= WolverineHost.For(opts =>
+-                opts.UseAzureServiceBusTesting().UseConventionalRouting().AutoProvision().AutoPurgeOnStartup());
++                opts.UseAzureServiceBusTestingWithNamespace(_ns).UseConventionalRouting().AutoPurgeOnStartup());
+ 
+             return _host.Services.GetRequiredService<IWolverineRuntime>();
+         }
+@@ -32,7 +35,7 @@ public abstract class ConventionalRoutingContext : IAsyncLifetime
+     {
+         if (_host != null) await _host.StopAsync();
+         _host?.Dispose();
+-        await AzureServiceBusTesting.DeleteAllEmulatorObjectsAsync();
++        await AzureServiceBusTesting.DeleteAllEmulatorObjectsAsync(_ns);
+     }
+ 
+     internal void ConfigureConventions(Action<AzureServiceBusMessageRoutingConvention> configure)
+@@ -40,7 +43,7 @@ public abstract class ConventionalRoutingContext : IAsyncLifetime
+         _host = Host.CreateDefaultBuilder()
+             .UseWolverine(opts =>
+             {
+-                opts.UseAzureServiceBusTesting().UseConventionalRouting(configure).AutoProvision()
++                opts.UseAzureServiceBusTestingWithNamespace(_ns).UseConventionalRouting(configure)
+                     .AutoPurgeOnStartup();
+             }).Start();
+     }
+diff --git a/src/Transports/Azure/Wolverine.AzureServiceBus.Tests/ConventionalRouting/discover_with_naming_prefix.cs b/src/Transports/Azure/Wolverine.AzureServiceBus.Tests/ConventionalRouting/discover_with_naming_prefix.cs
+index 97f8662..d1b42a5 100644
+--- a/src/Transports/Azure/Wolverine.AzureServiceBus.Tests/ConventionalRouting/discover_with_naming_prefix.cs
++++ b/src/Transports/Azure/Wolverine.AzureServiceBus.Tests/ConventionalRouting/discover_with_naming_prefix.cs
+@@ -19,7 +19,7 @@ public class discover_with_naming_prefix : IDisposable
+         _host = Host.CreateDefaultBuilder()
+             .UseWolverine(opts =>
+             {
+-                opts.UseAzureServiceBusTesting().PrefixIdentifiers("zztop").UseConventionalRouting().AutoProvision()
++                opts.UseAzureServiceBusTesting().PrefixIdentifiers("zztop").UseConventionalRouting()
+                     .AutoPurgeOnStartup();
+             }).Start();
+     }
+diff --git a/src/Transports/Azure/Wolverine.AzureServiceBus.Tests/ConventionalRouting/end_to_end_with_conventional_routing.cs b/src/Transports/Azure/Wolverine.AzureServiceBus.Tests/ConventionalRouting/end_to_end_with_conventional_routing.cs
+index a9d1c98..b7d33b1 100644
+--- a/src/Transports/Azure/Wolverine.AzureServiceBus.Tests/ConventionalRouting/end_to_end_with_conventional_routing.cs
++++ b/src/Transports/Azure/Wolverine.AzureServiceBus.Tests/ConventionalRouting/end_to_end_with_conventional_routing.cs
+@@ -13,13 +13,16 @@ public class end_to_end_with_conventional_routing : IAsyncLifetime
+ {
+     private IHost _receiver = null!;
+     private IHost _sender = null!;
++    private string _ns = null!;
+ 
+     public async Task InitializeAsync()
+     {
++        _ns = Guid.NewGuid().ToString("N")[..20];
++
+         _sender = await Host.CreateDefaultBuilder()
+             .UseWolverine(opts =>
+             {
+-                opts.UseAzureServiceBusTesting().UseConventionalRouting().AutoProvision().AutoPurgeOnStartup();
++                opts.UseAzureServiceBusTestingWithNamespace(_ns).UseConventionalRouting().AutoPurgeOnStartup();
+                 opts.DisableConventionalDiscovery();
+                 opts.ServiceName = "Sender";
+ 
+@@ -29,7 +32,7 @@ public class end_to_end_with_conventional_routing : IAsyncLifetime
+         _receiver = await Host.CreateDefaultBuilder()
+             .UseWolverine(opts =>
+             {
+-                opts.UseAzureServiceBusTesting().UseConventionalRouting().AutoProvision().AutoPurgeOnStartup();
++                opts.UseAzureServiceBusTestingWithNamespace(_ns).UseConventionalRouting().AutoPurgeOnStartup();
+                 opts.ServiceName = "Receiver";
+                 
+                 opts.Services.AddResourceSetupOnStartup();
+@@ -42,7 +45,7 @@ public class end_to_end_with_conventional_routing : IAsyncLifetime
+         _sender.Dispose();
+         await _receiver.StopAsync();
+         _receiver.Dispose();
+-        await AzureServiceBusTesting.DeleteAllEmulatorObjectsAsync();
++        await AzureServiceBusTesting.DeleteAllEmulatorObjectsAsync(_ns);
+     }
+ 
+     [Fact]
+diff --git a/src/Transports/Azure/Wolverine.AzureServiceBus.Tests/ConventionalRouting/end_to_end_with_conventional_routing_with_prefix.cs b/src/Transports/Azure/Wolverine.AzureServiceBus.Tests/ConventionalRouting/end_to_end_with_conventional_routing_with_prefix.cs
+index 35b2c7b..c87685b 100644
+--- a/src/Transports/Azure/Wolverine.AzureServiceBus.Tests/ConventionalRouting/end_to_end_with_conventional_routing_with_prefix.cs
++++ b/src/Transports/Azure/Wolverine.AzureServiceBus.Tests/ConventionalRouting/end_to_end_with_conventional_routing_with_prefix.cs
+@@ -12,23 +12,26 @@ public class end_to_end_with_conventional_routing_with_prefix : IAsyncLifetime
+ {
+     private IHost _receiver = null!;
+     private IHost _sender = null!;
++    private string _ns = null!;
+ 
+     public Task InitializeAsync()
+     {
++        _ns = Guid.NewGuid().ToString("N")[..20];
++
+         _sender = WolverineHost.For(opts =>
+         {
+-            opts.UseAzureServiceBusTesting()
++            opts.UseAzureServiceBusTestingWithNamespace(_ns)
+                 .PrefixIdentifiers("shazaam")
+-                .UseConventionalRouting().AutoProvision().AutoPurgeOnStartup();
++                .UseConventionalRouting().AutoPurgeOnStartup();
+             opts.DisableConventionalDiscovery();
+             opts.ServiceName = "Sender";
+         });
+ 
+         _receiver = WolverineHost.For(opts =>
+         {
+-            opts.UseAzureServiceBusTesting()
++            opts.UseAzureServiceBusTestingWithNamespace(_ns)
+                 .PrefixIdentifiers("shazaam")
+-                .UseConventionalRouting().AutoProvision().AutoPurgeOnStartup();
++                .UseConventionalRouting().AutoPurgeOnStartup();
+             opts.ServiceName = "Receiver";
+         });
+ 
+@@ -41,7 +44,7 @@ public class end_to_end_with_conventional_routing_with_prefix : IAsyncLifetime
+         if (_receiver != null) await _receiver.StopAsync();
+         _sender?.Dispose();
+         _receiver?.Dispose();
+-        await AzureServiceBusTesting.DeleteAllEmulatorObjectsAsync();
++        await AzureServiceBusTesting.DeleteAllEmulatorObjectsAsync(_ns);
+     }
+ 
+     [Fact]
+diff --git a/src/Transports/Azure/Wolverine.AzureServiceBus.Tests/ConventionalRouting/when_using_handler_type_naming.cs b/src/Transports/Azure/Wolverine.AzureServiceBus.Tests/ConventionalRouting/when_using_handler_type_naming.cs
+index f8a210a..141abd7 100644
+--- a/src/Transports/Azure/Wolverine.AzureServiceBus.Tests/ConventionalRouting/when_using_handler_type_naming.cs
++++ b/src/Transports/Azure/Wolverine.AzureServiceBus.Tests/ConventionalRouting/when_using_handler_type_naming.cs
+@@ -21,7 +21,6 @@ public class when_using_handler_type_naming : IAsyncLifetime
+             {
+                 opts.UseAzureServiceBusTesting()
+                     .UseConventionalRouting(NamingSource.FromHandlerType)
+-                    .AutoProvision()
+                     .AutoPurgeOnStartup();
+ 
+                 opts.Discovery.DisableConventionalDiscovery()
+diff --git a/src/Transports/Azure/Wolverine.AzureServiceBus.Tests/InlineSendingAndReceivingCompliance.cs b/src/Transports/Azure/Wolverine.AzureServiceBus.Tests/InlineSendingAndReceivingCompliance.cs
+index cb658e9..da18217 100644
+--- a/src/Transports/Azure/Wolverine.AzureServiceBus.Tests/InlineSendingAndReceivingCompliance.cs
++++ b/src/Transports/Azure/Wolverine.AzureServiceBus.Tests/InlineSendingAndReceivingCompliance.cs
+@@ -6,6 +6,8 @@ namespace Wolverine.AzureServiceBus.Tests;
+ 
+ public class InlineComplianceFixture : TransportComplianceFixture, IAsyncLifetime
+ {
++    private string _ns = null!;
++
+     public InlineComplianceFixture() : base(new Uri("asb://queue/inline-receiver"), 120)
+     {
+     }
+@@ -17,14 +19,12 @@ public class InlineComplianceFixture : TransportComplianceFixture, IAsyncLifetim
+ 
+         await SenderIs(opts =>
+         {
+-            opts.UseAzureServiceBusTesting()
+-                .AutoProvision();
++            opts.UseAzureServiceBusTesting(out _ns);
+         });
+ 
+         await ReceiverIs(opts =>
+         {
+-            opts.UseAzureServiceBusTesting()
+-                .AutoProvision();
++            opts.UseAzureServiceBusTestingWithNamespace(_ns);
+ 
+             #region sample_using_process_inline
+ 
+@@ -43,7 +43,7 @@ public class InlineComplianceFixture : TransportComplianceFixture, IAsyncLifetim
+ 
+     protected override Task AfterDisposeAsync()
+     {
+-        return AzureServiceBusTesting.DeleteAllEmulatorObjectsAsync();
++        return AzureServiceBusTesting.DeleteAllEmulatorObjectsAsync(_ns);
+     }
+ }
+ 
+diff --git a/src/Transports/Azure/Wolverine.AzureServiceBus.Tests/NoParallelization.cs b/src/Transports/Azure/Wolverine.AzureServiceBus.Tests/NoParallelization.cs
+index b1fa884..7f5e399 100644
+--- a/src/Transports/Azure/Wolverine.AzureServiceBus.Tests/NoParallelization.cs
++++ b/src/Transports/Azure/Wolverine.AzureServiceBus.Tests/NoParallelization.cs
+@@ -1,3 +1,3 @@
+ ﻿using Xunit;
+ 
+-[assembly: CollectionBehavior(CollectionBehavior.CollectionPerAssembly)]
+\ No newline at end of file
++[assembly: CollectionBehavior(CollectionBehavior.CollectionPerClass, MaxParallelThreads = 4)]
+\ No newline at end of file
+diff --git a/src/Transports/Azure/Wolverine.AzureServiceBus.Tests/StatefulResourceSmokeTests.cs b/src/Transports/Azure/Wolverine.AzureServiceBus.Tests/StatefulResourceSmokeTests.cs
+index 4faa17f..29fa1e4 100644
+--- a/src/Transports/Azure/Wolverine.AzureServiceBus.Tests/StatefulResourceSmokeTests.cs
++++ b/src/Transports/Azure/Wolverine.AzureServiceBus.Tests/StatefulResourceSmokeTests.cs
+@@ -9,9 +9,15 @@ namespace Wolverine.AzureServiceBus.Tests;
+ [Trait("Category", "Flaky")]
+ public class StatefulResourceSmokeTests : IAsyncLifetime
+ {
+-    public Task InitializeAsync() => Task.CompletedTask;
++    private string _ns = null!;
+ 
+-    public Task DisposeAsync() => AzureServiceBusTesting.DeleteAllEmulatorObjectsAsync();
++    public Task InitializeAsync()
++    {
++        _ns = Guid.NewGuid().ToString("N")[..20];
++        return Task.CompletedTask;
++    }
++
++    public Task DisposeAsync() => AzureServiceBusTesting.DeleteAllEmulatorObjectsAsync(_ns);
+ 
+     private IHostBuilder ConfigureBuilder(bool autoProvision, int starting = 1)
+     {
+@@ -20,11 +26,11 @@ public class StatefulResourceSmokeTests : IAsyncLifetime
+             {
+                 if (autoProvision)
+                 {
+-                    opts.UseAzureServiceBusTesting().AutoProvision();
++                    opts.UseAzureServiceBusTestingWithNamespace(_ns);
+                 }
+                 else
+                 {
+-                    opts.UseAzureServiceBusTesting();
++                    opts.UseAzureServiceBusTestingWithNamespace(_ns);
+                 }
+ 
+                 opts.PublishMessage<SRMessage1>()
+diff --git a/src/Transports/Azure/Wolverine.AzureServiceBus.Tests/end_to_end.cs b/src/Transports/Azure/Wolverine.AzureServiceBus.Tests/end_to_end.cs
+index a216092..0212cfd 100644
+--- a/src/Transports/Azure/Wolverine.AzureServiceBus.Tests/end_to_end.cs
++++ b/src/Transports/Azure/Wolverine.AzureServiceBus.Tests/end_to_end.cs
+@@ -13,6 +13,7 @@ namespace Wolverine.AzureServiceBus.Tests;
+ public class end_to_end : IAsyncLifetime
+ {
+     private IHost _host = null!;
++    private string _ns = null!;
+ 
+     public async Task InitializeAsync()
+     {
+@@ -21,8 +22,8 @@ public class end_to_end : IAsyncLifetime
+         _host = await Host.CreateDefaultBuilder()
+             .UseWolverine(opts =>
+             {
+-                opts.UseAzureServiceBusTesting()
+-                    .AutoProvision().AutoPurgeOnStartup();
++                opts.UseAzureServiceBusTesting(out _ns)
++                    .AutoPurgeOnStartup();
+ 
+                 opts.ListenToAzureServiceBusQueue("send_and_receive");
+                 opts.PublishMessage<AsbMessage1>().ToAzureServiceBusQueue("send_and_receive");
+@@ -65,7 +66,7 @@ public class end_to_end : IAsyncLifetime
+     {
+         await _host.StopAsync();
+         _host.Dispose();
+-        await AzureServiceBusTesting.DeleteAllEmulatorObjectsAsync();
++        await AzureServiceBusTesting.DeleteAllEmulatorObjectsAsync(_ns);
+     }
+ 
+     [Fact]
+@@ -89,8 +90,8 @@ public class end_to_end : IAsyncLifetime
+         var host = await Host.CreateDefaultBuilder()
+             .UseWolverine(opts =>
+             {
+-                opts.UseAzureServiceBusTesting()
+-                    .AutoProvision().AutoPurgeOnStartup()
++                opts.UseAzureServiceBusTestingWithNamespace(_ns)
++                    .AutoPurgeOnStartup()
+                     .SystemQueuesAreEnabled(false);
+ 
+                 opts.ListenToAzureServiceBusQueue("send_and_receive");
+diff --git a/src/Transports/Azure/Wolverine.AzureServiceBus.Tests/end_to_end_with_CloudEvents.cs b/src/Transports/Azure/Wolverine.AzureServiceBus.Tests/end_to_end_with_CloudEvents.cs
+index 0f56e71..5421cba 100644
+--- a/src/Transports/Azure/Wolverine.AzureServiceBus.Tests/end_to_end_with_CloudEvents.cs
++++ b/src/Transports/Azure/Wolverine.AzureServiceBus.Tests/end_to_end_with_CloudEvents.cs
+@@ -11,14 +11,15 @@ namespace Wolverine.AzureServiceBus.Tests;
+ public class end_to_end_with_CloudEvents : IAsyncLifetime
+ {
+     private IHost _host = null!;
++    private string _ns = null!;
+ 
+     public async Task InitializeAsync()
+     {
+         _host = await Host.CreateDefaultBuilder()
+             .UseWolverine(opts =>
+             {
+-                opts.UseAzureServiceBusTesting()
+-                    .AutoProvision().AutoPurgeOnStartup();
++                opts.UseAzureServiceBusTesting(out _ns)
++                    .AutoPurgeOnStartup();
+ 
+                 opts.ListenToAzureServiceBusQueue("cloudevents").InteropWithCloudEvents();
+                 opts.PublishMessage<AsbMessage1>().ToAzureServiceBusQueue("cloudevents").InteropWithCloudEvents();
+@@ -52,7 +53,7 @@ public class end_to_end_with_CloudEvents : IAsyncLifetime
+     {
+         await _host.StopAsync();
+         _host.Dispose();
+-        await AzureServiceBusTesting.DeleteAllEmulatorObjectsAsync();
++        await AzureServiceBusTesting.DeleteAllEmulatorObjectsAsync(_ns);
+     }
+ 
+     [Fact]
+diff --git a/src/Transports/Azure/Wolverine.AzureServiceBus.Tests/end_to_end_with_named_broker.cs b/src/Transports/Azure/Wolverine.AzureServiceBus.Tests/end_to_end_with_named_broker.cs
+index 9dbc379..49aeced 100644
+--- a/src/Transports/Azure/Wolverine.AzureServiceBus.Tests/end_to_end_with_named_broker.cs
++++ b/src/Transports/Azure/Wolverine.AzureServiceBus.Tests/end_to_end_with_named_broker.cs
+@@ -17,9 +17,11 @@ namespace Wolverine.AzureServiceBus.Tests;
+ 
+ public class end_to_end_with_named_broker : IAsyncLifetime
+ {
++    private string _ns = null!;
++
+     public Task InitializeAsync() => Task.CompletedTask;
+ 
+-    public async Task DisposeAsync() => await AzureServiceBusTesting.DeleteAllEmulatorObjectsAsync();
++    public async Task DisposeAsync() => await AzureServiceBusTesting.DeleteAllEmulatorObjectsAsync(_ns);
+ 
+     public static async Task bootstrap_with_named_brokers()
+     {
+@@ -50,15 +52,17 @@ public class end_to_end_with_named_broker : IAsyncLifetime
+     public end_to_end_with_named_broker(ITestOutputHelper output)
+     {
+         _output = output;
++        _ns = Guid.NewGuid().ToString("N")[..20];
+     }
+     
+     //[Fact]
+     public async Task send_message_to_and_receive_through_rabbitmq_with_inline_receivers()
+     {
+         var queueName = Guid.NewGuid().ToString();
++        var connStr = Servers.AzureServiceBusConnectionStringForNamespace(_ns);
+         using var publisher = WolverineHost.For(opts =>
+         {
+-            opts.AddNamedAzureServiceBusBroker(theName, Servers.AzureServiceBusConnectionString).SystemQueuesAreEnabled(false).AutoProvision().AutoPurgeOnStartup();
++            opts.AddNamedAzureServiceBusBroker(theName, connStr).SystemQueuesAreEnabled(false).AutoProvision().AutoPurgeOnStartup();
+ 
+             opts.PublishAllMessages()
+                 .ToAzureServiceBusQueueOnNamedBroker(theName, queueName)
+@@ -70,7 +74,7 @@ public class end_to_end_with_named_broker : IAsyncLifetime
+ 
+         using var receiver = WolverineHost.For(opts =>
+         {
+-            opts.AddNamedAzureServiceBusBroker(theName, Servers.AzureServiceBusConnectionString).SystemQueuesAreEnabled(false).AutoProvision();
++            opts.AddNamedAzureServiceBusBroker(theName, connStr).SystemQueuesAreEnabled(false).AutoProvision();
+ 
+             opts.ListenToAzureServiceBusQueueOnNamedBroker(theName, queueName).ProcessInline().Named(queueName);
+             opts.Services.AddSingleton<ColorHistory>();
+@@ -102,16 +106,18 @@ public class end_to_end_with_named_broker : IAsyncLifetime
+     public async Task correct_scheme_on_reply_uri()
+     {
+         var queueName = Guid.NewGuid().ToString();
++        var connStr = Servers.AzureServiceBusConnectionStringForNamespace(_ns);
++        var mgmtConnStr = Servers.AzureServiceBusManagementConnectionStringForNamespace(_ns);
+         using var publisher = WolverineHost.For(opts =>
+         {
+             opts.ServiceName = "Publisher";
+             opts.Discovery.DisableConventionalDiscovery();
+ 
+-            opts.AddNamedAzureServiceBusBroker(theName, Servers.AzureServiceBusConnectionString)
++            opts.AddNamedAzureServiceBusBroker(theName, connStr)
+                 .AutoProvision().AutoPurgeOnStartup();
+ 
+             var namedTransport = opts.Transports.GetOrCreate<AzureServiceBusTransport>(theName);
+-            namedTransport.ManagementConnectionString = Servers.AzureServiceBusManagementConnectionString;
++            namedTransport.ManagementConnectionString = mgmtConnStr;
+ 
+             opts.PublishAllMessages()
+                 .ToAzureServiceBusQueueOnNamedBroker(theName, queueName)
+@@ -124,7 +130,7 @@ public class end_to_end_with_named_broker : IAsyncLifetime
+         using var receiver = WolverineHost.For(opts =>
+         {
+             opts.ServiceName = "Receiver";
+-            opts.UseAzureServiceBusTesting().AutoProvision();
++            opts.UseAzureServiceBusTestingWithNamespace(_ns);
+ 
+             opts.ListenToAzureServiceBusQueue(queueName).Named(queueName);
+ 
+diff --git a/src/Transports/Azure/Wolverine.AzureServiceBus.Tests/send_and_receive_with_topics_and_subscriptions.cs b/src/Transports/Azure/Wolverine.AzureServiceBus.Tests/send_and_receive_with_topics_and_subscriptions.cs
+index 9f5aed9..3530918 100644
+--- a/src/Transports/Azure/Wolverine.AzureServiceBus.Tests/send_and_receive_with_topics_and_subscriptions.cs
++++ b/src/Transports/Azure/Wolverine.AzureServiceBus.Tests/send_and_receive_with_topics_and_subscriptions.cs
+@@ -5,6 +5,8 @@ namespace Wolverine.AzureServiceBus.Tests;
+ 
+ public class TopicsComplianceFixture : TransportComplianceFixture, IAsyncLifetime
+ {
++    private string _ns = null!;
++
+     public TopicsComplianceFixture() : base(new Uri("asb://topic/topic1"), 120)
+     {
+     }
+@@ -13,14 +15,12 @@ public class TopicsComplianceFixture : TransportComplianceFixture, IAsyncLifetim
+     {
+         await SenderIs(opts =>
+         {
+-            opts.UseAzureServiceBusTesting()
+-                .AutoProvision();
++            opts.UseAzureServiceBusTesting(out _ns);
+         });
+ 
+         await ReceiverIs(opts =>
+         {
+-            opts.UseAzureServiceBusTesting()
+-                .AutoProvision();
++            opts.UseAzureServiceBusTestingWithNamespace(_ns);
+ 
+             opts.ListenToAzureServiceBusSubscription("subscription1").FromTopic("topic1");
+         });
+@@ -33,7 +33,7 @@ public class TopicsComplianceFixture : TransportComplianceFixture, IAsyncLifetim
+ 
+     protected override Task AfterDisposeAsync()
+     {
+-        return AzureServiceBusTesting.DeleteAllEmulatorObjectsAsync();
++        return AzureServiceBusTesting.DeleteAllEmulatorObjectsAsync(_ns);
+     }
+ }
+ 
+diff --git a/src/Transports/Azure/Wolverine.AzureServiceBus.Tests/send_and_receive_with_topics_and_subscriptions_with_custom_rule.cs b/src/Transports/Azure/Wolverine.AzureServiceBus.Tests/send_and_receive_with_topics_and_subscriptions_with_custom_rule.cs
+index e75da16..df2b7c7 100644
+--- a/src/Transports/Azure/Wolverine.AzureServiceBus.Tests/send_and_receive_with_topics_and_subscriptions_with_custom_rule.cs
++++ b/src/Transports/Azure/Wolverine.AzureServiceBus.Tests/send_and_receive_with_topics_and_subscriptions_with_custom_rule.cs
+@@ -9,18 +9,18 @@ namespace Wolverine.AzureServiceBus.Tests;
+ public class TopicsWithCustomRuleComplianceFixture()
+     : TransportComplianceFixture(new Uri("asb://topic/topic1"), 120), IAsyncLifetime
+ {
++    private string _ns = null!;
++
+     public async Task InitializeAsync()
+     {
+         await SenderIs(opts =>
+         {
+-            opts.UseAzureServiceBusTesting()
+-                .AutoProvision();
++            opts.UseAzureServiceBusTesting(out _ns);
+         });
+ 
+         await ReceiverIs(opts =>
+         {
+-            opts.UseAzureServiceBusTesting()
+-                .AutoProvision();
++            opts.UseAzureServiceBusTestingWithNamespace(_ns);
+ 
+             opts.ListenToAzureServiceBusSubscription(
+                     "subscription1",
+@@ -39,7 +39,7 @@ public class TopicsWithCustomRuleComplianceFixture()
+ 
+     protected override Task AfterDisposeAsync()
+     {
+-        return AzureServiceBusTesting.DeleteAllEmulatorObjectsAsync();
++        return AzureServiceBusTesting.DeleteAllEmulatorObjectsAsync(_ns);
+     }
+ }
+ 
+diff --git a/src/Transports/Azure/Wolverine.AzureServiceBus.Tests/sending_compliance_with_prefixes.cs b/src/Transports/Azure/Wolverine.AzureServiceBus.Tests/sending_compliance_with_prefixes.cs
+index aa51103..79e4a2e 100644
+--- a/src/Transports/Azure/Wolverine.AzureServiceBus.Tests/sending_compliance_with_prefixes.cs
++++ b/src/Transports/Azure/Wolverine.AzureServiceBus.Tests/sending_compliance_with_prefixes.cs
+@@ -10,6 +10,8 @@ namespace Wolverine.AzureServiceBus.Tests;
+ 
+ public class PrefixedComplianceFixture : TransportComplianceFixture, IAsyncLifetime
+ {
++    private string _ns = null!;
++
+     public PrefixedComplianceFixture() : base(new Uri("asb://queue/foo.buffered-receiver"), 120)
+     {
+     }
+@@ -21,17 +23,15 @@ public class PrefixedComplianceFixture : TransportComplianceFixture, IAsyncLifet
+ 
+         await SenderIs(opts =>
+         {
+-            opts.UseAzureServiceBusTesting()
+-                .PrefixIdentifiers("foo")
+-                .AutoProvision();
++            opts.UseAzureServiceBusTesting(out _ns)
++                .PrefixIdentifiers("foo");
+ 
+         });
+ 
+         await ReceiverIs(opts =>
+         {
+-            opts.UseAzureServiceBusTesting()
+-                .PrefixIdentifiers("foo")
+-                .AutoProvision();
++            opts.UseAzureServiceBusTestingWithNamespace(_ns)
++                .PrefixIdentifiers("foo");
+ 
+             opts.ListenToAzureServiceBusQueue(queueName, q => q.Options.AutoDeleteOnIdle = 5.Minutes()).Named("receiver");
+         });
+@@ -44,7 +44,7 @@ public class PrefixedComplianceFixture : TransportComplianceFixture, IAsyncLifet
+ 
+     protected override Task AfterDisposeAsync()
+     {
+-        return AzureServiceBusTesting.DeleteAllEmulatorObjectsAsync();
++        return AzureServiceBusTesting.DeleteAllEmulatorObjectsAsync(_ns);
+     }
+ }
+ 
+diff --git a/src/Transports/Azure/Wolverine.AzureServiceBus.Tests/using_native_scheduling.cs b/src/Transports/Azure/Wolverine.AzureServiceBus.Tests/using_native_scheduling.cs
+index 939a9bd..6454d23 100644
+--- a/src/Transports/Azure/Wolverine.AzureServiceBus.Tests/using_native_scheduling.cs
++++ b/src/Transports/Azure/Wolverine.AzureServiceBus.Tests/using_native_scheduling.cs
+@@ -8,9 +8,15 @@ namespace Wolverine.AzureServiceBus.Tests;
+ 
+ public class using_native_scheduling : IAsyncLifetime
+ {
+-    public Task InitializeAsync() => Task.CompletedTask;
++    private string _ns = null!;
+ 
+-    public Task DisposeAsync() => AzureServiceBusTesting.DeleteAllEmulatorObjectsAsync();
++    public Task InitializeAsync()
++    {
++        _ns = Guid.NewGuid().ToString("N")[..20];
++        return Task.CompletedTask;
++    }
++
++    public Task DisposeAsync() => AzureServiceBusTesting.DeleteAllEmulatorObjectsAsync(_ns);
+ 
+     [Fact]
+     public async Task with_inline_endpoint()
+@@ -18,8 +24,8 @@ public class using_native_scheduling : IAsyncLifetime
+         using var host = await Host.CreateDefaultBuilder()
+             .UseWolverine(opts =>
+             {
+-                opts.UseAzureServiceBusTesting()
+-                    .AutoProvision().AutoPurgeOnStartup();
++                opts.UseAzureServiceBusTestingWithNamespace(_ns)
++                    .AutoPurgeOnStartup();
+ 
+                 opts.ListenToAzureServiceBusQueue("inline1").ProcessInline();
+                 opts.PublishMessage<AsbMessage1>().ToAzureServiceBusQueue("inline1");
+@@ -42,8 +48,8 @@ public class using_native_scheduling : IAsyncLifetime
+         using var host = await Host.CreateDefaultBuilder()
+             .UseWolverine(opts =>
+             {
+-                opts.UseAzureServiceBusTesting()
+-                    .AutoProvision().AutoPurgeOnStartup();
++                opts.UseAzureServiceBusTestingWithNamespace(_ns)
++                    .AutoPurgeOnStartup();
+ 
+                 opts.ListenToAzureServiceBusQueue("inline1").ProcessInline();
+                 opts.PublishAllMessages().ToAzureServiceBusQueue("inline1");
+@@ -72,8 +78,8 @@ public class using_native_scheduling : IAsyncLifetime
+         using var host = await Host.CreateDefaultBuilder()
+             .UseWolverine(opts =>
+             {
+-                opts.UseAzureServiceBusTesting()
+-                    .AutoProvision().AutoPurgeOnStartup();
++                opts.UseAzureServiceBusTestingWithNamespace(_ns)
++                    .AutoPurgeOnStartup();
+ 
+                 opts.ListenToAzureServiceBusQueue("inline1").ProcessInline();
+                 opts.PublishAllMessages().ToAzureServiceBusQueue("inline1");
+@@ -102,8 +108,8 @@ public class using_native_scheduling : IAsyncLifetime
+         using var host = await Host.CreateDefaultBuilder()
+             .UseWolverine(opts =>
+             {
+-                opts.UseAzureServiceBusTesting()
+-                    .AutoProvision().AutoPurgeOnStartup();
++                opts.UseAzureServiceBusTestingWithNamespace(_ns)
++                    .AutoPurgeOnStartup();
+ 
+                 opts.PublishMessage<AsbMessage1>().ToAzureServiceBusTopic("scheduled-topic");
+                 opts.ListenToAzureServiceBusSubscription("scheduled-sub")
+@@ -128,8 +134,8 @@ public class using_native_scheduling : IAsyncLifetime
+         using var host = await Host.CreateDefaultBuilder()
+             .UseWolverine(opts =>
+             {
+-                opts.UseAzureServiceBusTesting()
+-                    .AutoProvision().AutoPurgeOnStartup();
++                opts.UseAzureServiceBusTestingWithNamespace(_ns)
++                    .AutoPurgeOnStartup();
+ 
+                 opts.ListenToAzureServiceBusQueue("buffered1").BufferedInMemory();
+                 opts.PublishMessage<AsbMessage1>().ToAzureServiceBusQueue("buffered1");

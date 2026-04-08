@@ -34,7 +34,9 @@ public class EmulatorContainer : IContainer
     // can resolve the target entity from the "associated-link-name" (which is typically
     // the AMQP sender link name, not the entity path). Link names use case-insensitive
     // comparison because the Azure SDK may vary casing across SDK versions.
-    private readonly ConcurrentDictionary<string, string> _senderLinkNames = new(StringComparer.OrdinalIgnoreCase);
+    public readonly record struct SenderLinkTarget(string Address, string NamespaceName);
+
+    private readonly ConcurrentDictionary<string, SenderLinkTarget> _senderLinkNames = new(StringComparer.OrdinalIgnoreCase);
 
     // Reflection accessor for AttachContext's internal constructor.
     // AttachContext(ListenerLink link, Attach attach) is internal in AMQPNetLite,
@@ -78,7 +80,7 @@ public class EmulatorContainer : IContainer
     /// </summary>
     public ManagementLinkEndpoint CreateManagementEndpoint(NamespaceContext context, ScheduledMessageProcessor? scheduledProcessor = null, QueueEntity? scopedQueue = null)
     {
-        return new ManagementLinkEndpoint(context, scheduledProcessor, scopedQueue: scopedQueue, senderLinkNames: _senderLinkNames);
+        return new ManagementLinkEndpoint(context, scheduledProcessor, scopedAddress: scopedQueue?.Name, scopedQueue: scopedQueue, senderLinkNames: _senderLinkNames, registry: _registry);
     }
 
     /// <summary>
@@ -159,7 +161,13 @@ public class EmulatorContainer : IContainer
             RequestProcessorEntry? entry;
             lock (_requestProcessors)
             {
-                _requestProcessors.TryGetValue(address, out entry);
+                var processorKey = address;
+                if (address.EndsWith("/$management", StringComparison.OrdinalIgnoreCase))
+                {
+                    processorKey = BuildEntityManagementProcessorKey(listenerLink.Session.Connection, address);
+                }
+
+                _requestProcessors.TryGetValue(processorKey, out entry);
 
                 // Entity-scoped $management links (e.g. "my-queue/$management")
                 // Create an entity-specific management endpoint if possible, otherwise
@@ -167,10 +175,10 @@ public class EmulatorContainer : IContainer
                 if (entry is null && address.EndsWith("/$management", StringComparison.OrdinalIgnoreCase))
                 {
                     var entityName = address[..^"/$management".Length].TrimStart('/');
-                    var entityEntry = TryCreateEntityManagementEntry(entityName);
+                    var entityEntry = TryCreateEntityManagementEntry(entityName, ResolveNamespace(listenerLink.Session.Connection));
                     if (entityEntry is not null)
                     {
-                        _requestProcessors[address] = entityEntry;
+                        _requestProcessors[processorKey] = entityEntry;
                         entry = entityEntry;
                     }
                     else
@@ -197,15 +205,21 @@ public class EmulatorContainer : IContainer
             RequestProcessorEntry? entry;
             lock (_requestProcessors)
             {
-                _requestProcessors.TryGetValue(sourceAddress, out entry);
+                var processorKey = sourceAddress;
+                if (sourceAddress.EndsWith("/$management", StringComparison.OrdinalIgnoreCase))
+                {
+                    processorKey = BuildEntityManagementProcessorKey(listenerLink.Session.Connection, sourceAddress);
+                }
+
+                _requestProcessors.TryGetValue(processorKey, out entry);
 
                 if (entry is null && sourceAddress.EndsWith("/$management", StringComparison.OrdinalIgnoreCase))
                 {
                     var entityName = sourceAddress[..^"/$management".Length].TrimStart('/');
-                    var entityEntry = TryCreateEntityManagementEntry(entityName);
+                    var entityEntry = TryCreateEntityManagementEntry(entityName, ResolveNamespace(listenerLink.Session.Connection));
                     if (entityEntry is not null)
                     {
-                        _requestProcessors[sourceAddress] = entityEntry;
+                        _requestProcessors[processorKey] = entityEntry;
                         entry = entityEntry;
                     }
                     else
@@ -231,7 +245,9 @@ public class EmulatorContainer : IContainer
             && !address.Equals("$management", StringComparison.OrdinalIgnoreCase)
             && !address.Equals("$cbs", StringComparison.OrdinalIgnoreCase))
         {
-            _senderLinkNames[attach.LinkName] = address;
+            var target = new SenderLinkTarget(address, ResolveNamespace(listenerLink.Session.Connection));
+            foreach (var key in BuildSenderLinkRegistryKeys(listenerLink.Session.Connection, attach.LinkName))
+                _senderLinkNames[key] = target;
         }
 
         if (_linkProcessor != null)
@@ -391,7 +407,34 @@ public class EmulatorContainer : IContainer
 
         if (responseLink == null)
         {
-            // Fallback: if ReplyTo didn't match but there's exactly one response link,
+            // Strategy 1: find a response link on the SAME connection as the request link.
+            // When multiple connections share a single request processor (e.g. $cbs),
+            // each connection has its own response link. The ReplyTo may not match the
+            // stored Target.Address, but we can match by connection identity.
+            lock (entry.ResponseLinks)
+            {
+                foreach (var rl in entry.ResponseLinks.Values)
+                {
+                    try
+                    {
+                        if (rl.Session.Connection == link.Session.Connection)
+                        {
+                            responseLink = rl;
+                            Log.LogDebug("DispatchRequest: using connection-matched response link");
+                            break;
+                        }
+                    }
+                    catch (ObjectDisposedException)
+                    {
+                        // Session/connection may be closing — skip this link.
+                    }
+                }
+            }
+        }
+
+        if (responseLink == null)
+        {
+            // Strategy 2: if ReplyTo didn't match but there's exactly one response link,
             // use it. This handles cases where the SDK's ReplyTo format doesn't match
             // the Target.Address stored during link attachment.
             lock (entry.ResponseLinks)
@@ -437,7 +480,7 @@ public class EmulatorContainer : IContainer
     /// Attempts to create an entity-specific management endpoint for the given entity name.
     /// Returns null if the registry is not configured or the entity is not found.
     /// </summary>
-    private RequestProcessorEntry? TryCreateEntityManagementEntry(string entityName)
+    private RequestProcessorEntry? TryCreateEntityManagementEntry(string entityName, string? preferredNamespaceName = null)
     {
         if (_registry is null)
         {
@@ -445,30 +488,102 @@ public class EmulatorContainer : IContainer
             return null;
         }
 
-        // Resolve the namespace context — try all namespaces to find the queue
         NamespaceContext? context = null;
         QueueEntity? queue = null;
-        foreach (var nsName in _registry.ListNamespaces())
+        TopicEntity? topic = null;
+
+        if (!string.IsNullOrWhiteSpace(preferredNamespaceName))
         {
-            var ns = _registry.Get(nsName);
-            if (ns is null) continue;
-            queue = ns.ResolveQueue(entityName);
-            if (queue is not null) { context = ns; break; }
+            context = _registry.Get(preferredNamespaceName!);
+            queue = context?.ResolveQueue(entityName);
+            topic = context?.GetTopic(entityName);
         }
+
+        if (queue is null && topic is null)
+        {
+            foreach (var nsName in _registry.ListNamespaces())
+            {
+                var ns = _registry.Get(nsName);
+                if (ns is null) continue;
+                queue = ns.ResolveQueue(entityName);
+                topic = ns.GetTopic(entityName);
+                if (queue is not null || topic is not null) { context = ns; break; }
+            }
+        }
+
         if (context is null)
             context = _registry.GetOrCreate("default");
-        if (queue is null)
-            queue = context.ResolveQueue(entityName);
-        if (queue is not null)
+        if (queue is null && topic is null)
         {
-            Log.LogInformation("TryCreateEntityManagementEntry: Created entry for entity '{EntityName}', HasSessions={HasSessions}",
-                entityName, queue.Sessions is not null);
-            var processor = new ManagementLinkEndpoint(context, _scheduledProcessor, scopedQueue: queue, senderLinkNames: _senderLinkNames);
+            queue = context.ResolveQueue(entityName);
+            topic = context.GetTopic(entityName);
+        }
+        if (queue is not null || topic is not null)
+        {
+            Log.LogInformation("TryCreateEntityManagementEntry: Created entry for entity '{EntityName}', HasSessions={HasSessions}, IsTopic={IsTopic}",
+                entityName, queue?.Sessions is not null, topic is not null);
+            var processor = new ManagementLinkEndpoint(context, _scheduledProcessor, scopedAddress: entityName, scopedQueue: queue, senderLinkNames: _senderLinkNames, registry: _registry);
             return new RequestProcessorEntry(processor);
         }
 
-        Log.LogWarning("TryCreateEntityManagementEntry: Queue not found for entity '{EntityName}'", entityName);
+        Log.LogWarning("TryCreateEntityManagementEntry: Entity not found for '{EntityName}'", entityName);
         return null;
+    }
+
+    private static string BuildEntityManagementProcessorKey(Connection connection, string address)
+    {
+        return $"{ResolveNamespace(connection)}|{address}";
+    }
+
+    internal static string BuildSenderLinkRegistryKey(Connection connection, string linkName)
+    {
+        var identityKey = CbsRequestProcessor.GetConnectionIdentityKey(connection);
+        if (!string.IsNullOrWhiteSpace(identityKey))
+            return $"{identityKey}|{linkName}";
+
+        return BuildNamespaceScopedSenderLinkRegistryKey(connection, linkName);
+    }
+
+    internal static string BuildNamespaceScopedSenderLinkRegistryKey(Connection connection, string linkName)
+    {
+        return $"{ResolveNamespace(connection)}|{linkName}";
+    }
+
+    internal static IEnumerable<string> BuildSenderLinkRegistryKeys(Connection connection, string linkName)
+    {
+        var primaryKey = BuildSenderLinkRegistryKey(connection, linkName);
+        yield return primaryKey;
+
+        var namespaceKey = BuildNamespaceScopedSenderLinkRegistryKey(connection, linkName);
+        if (!namespaceKey.Equals(primaryKey, StringComparison.Ordinal))
+            yield return namespaceKey;
+    }
+
+    private static string ResolveNamespace(Connection connection)
+    {
+        var keyName = CbsRequestProcessor.GetNamespaceForConnection(connection);
+        if (!string.IsNullOrWhiteSpace(keyName))
+            return keyName;
+
+        try
+        {
+            var openProp = connection.GetType().GetProperty("Open",
+                BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
+            if (openProp?.GetValue(connection) is Open open && !string.IsNullOrEmpty(open.HostName))
+            {
+                var host = open.HostName;
+                var namespaceName = host.Split('.', 2)[0];
+                if (!string.IsNullOrWhiteSpace(namespaceName)
+                    && !namespaceName.Equals("localhost", StringComparison.OrdinalIgnoreCase))
+                    return namespaceName;
+            }
+        }
+        catch
+        {
+            // Reflection failed; fall through to the default namespace.
+        }
+
+        return "default";
     }
 
     private static AttachContext? CreateAttachContext(ListenerLink link, Attach attach)

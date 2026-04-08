@@ -198,7 +198,7 @@ public class SenderLinkEndpoint : LinkEndpoint
             && message.ScheduledEnqueueTimeUtc.Value > DateTimeOffset.UtcNow
             && _scheduledProcessor is not null)
         {
-            _scheduledProcessor.Schedule(address, message);
+            _scheduledProcessor.Schedule(address, message, _context);
             return;
         }
 

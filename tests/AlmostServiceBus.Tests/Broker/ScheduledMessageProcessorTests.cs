@@ -121,6 +121,28 @@ public class ScheduledMessageProcessorTests
     }
 
     [Fact]
+    public void ProcessDueMessages_DoesNotCollideAcrossNamespacesWithSameSequenceNumber()
+    {
+        var defaultNs = new NamespaceContext("default");
+        var otherNs = new NamespaceContext("other");
+        var defaultQueue = defaultNs.CreateQueue("queue-a");
+        var otherQueue = otherNs.CreateQueue("queue-b");
+        var processor = new ScheduledMessageProcessor(defaultNs);
+
+        var pastTime = DateTimeOffset.UtcNow.AddHours(-1);
+        var seq1 = processor.Schedule("queue-a", CreateMessage(pastTime), defaultNs);
+        var seq2 = processor.Schedule("queue-b", CreateMessage(pastTime), otherNs);
+
+        Assert.Equal(1L, seq1);
+        Assert.Equal(1L, seq2);
+
+        processor.ProcessDueMessages();
+
+        Assert.NotNull(defaultQueue.TryDequeueImmediate());
+        Assert.NotNull(otherQueue.TryDequeueImmediate());
+    }
+
+    [Fact]
     public void Dispose_DoesNotThrow()
     {
         var ns = CreateNamespace();

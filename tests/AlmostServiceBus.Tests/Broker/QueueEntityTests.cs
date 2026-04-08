@@ -148,6 +148,24 @@ public class QueueEntityTests
     }
 
     [Fact]
+    public async Task Abandon_AssignsFreshLockToken()
+    {
+        var queue = new QueueEntity("test-queue") { MaxDeliveryCount = 10 };
+        queue.Enqueue(CreateMessage());
+
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        var first = await queue.DequeueAsync(cts.Token);
+        var originalLockToken = first.LockToken;
+
+        queue.Abandon(first.LockToken!);
+
+        var second = await queue.DequeueAsync(cts.Token);
+        Assert.Equal(first.MessageId, second.MessageId);
+        // Lock token must be different to avoid AMQP delivery tag collisions
+        Assert.NotEqual(originalLockToken, second.LockToken);
+    }
+
+    [Fact]
     public async Task Abandon_ExceedsMaxDeliveryCount_DeadLetters()
     {
         var queue = new QueueEntity("test-queue") { MaxDeliveryCount = 2 };
@@ -163,6 +181,7 @@ public class QueueEntityTests
         // Second delivery
         var msg2 = await queue.DequeueAsync(cts.Token);
         Assert.Equal(2, msg2.DeliveryCount);
+        var originalLockToken = msg2.LockToken;
 
         // Abandon at MaxDeliveryCount should dead-letter
         queue.Abandon(msg2.LockToken!);
@@ -171,6 +190,7 @@ public class QueueEntityTests
         var dlqMsg = queue.DeadLetterQueue.TryDequeueImmediate();
         Assert.NotNull(dlqMsg);
         Assert.Equal(msg2.MessageId, dlqMsg!.MessageId);
+        Assert.NotEqual(originalLockToken, dlqMsg.LockToken);
     }
 
     [Fact]
@@ -181,6 +201,7 @@ public class QueueEntityTests
 
         using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
         var msg = await queue.DequeueAsync(cts.Token);
+        var originalLockToken = msg.LockToken;
 
         queue.DeadLetter(msg.LockToken!, "MaxDeliveryCountExceeded", "Too many retries");
 
@@ -189,6 +210,7 @@ public class QueueEntityTests
         Assert.Equal(msg.MessageId, dlqMsg!.MessageId);
         Assert.Equal("MaxDeliveryCountExceeded", dlqMsg.DeadLetterReason);
         Assert.Equal("Too many retries", dlqMsg.DeadLetterErrorDescription);
+        Assert.NotEqual(originalLockToken, dlqMsg.LockToken);
     }
 
     [Fact]

@@ -6,15 +6,20 @@ using AlmostServiceBus.Core.Management;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.Extensions.Logging;
+using System.Net.Sockets;
 
 namespace AlmostServiceBus.TestHost;
 
 public class ServiceBusEmulatorFixture : IAsyncDisposable
 {
+    private const int MaxStartAttempts = 5;
+    private static readonly TimeSpan InitialRetryDelay = TimeSpan.FromMilliseconds(100);
+
     private WebApplication? _webApp;
     private AmqpServer? _amqpServer;
     private TcpMultiplexer? _multiplexer;
     private CancellationTokenSource? _multiplexerCts;
+    private Task? _multiplexerTask;
     private ScheduledMessageProcessor? _scheduledProcessor;
     private readonly MessageEventBus _eventBus = new();
     private readonly NamespaceRegistry _registry;
@@ -41,11 +46,46 @@ public class ServiceBusEmulatorFixture : IAsyncDisposable
     {
         EmulatorInfrastructure.EnsureDevCertTrusted();
 
+        for (var attempt = 1; attempt <= MaxStartAttempts; attempt++)
+        {
+            try
+            {
+                await StartCoreAsync();
+                return;
+            }
+            catch (Exception ex) when (IsPortBindingFailure(ex) && attempt < MaxStartAttempts)
+            {
+                await CleanupAsync();
+                await Task.Delay(TimeSpan.FromMilliseconds(InitialRetryDelay.TotalMilliseconds * attempt));
+            }
+            catch
+            {
+                await CleanupAsync();
+                throw;
+            }
+        }
+    }
+
+    public async Task StopAsync()
+    {
+        await CleanupAsync();
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        await StopAsync();
+    }
+
+    public NamespaceContext GetNamespaceContext() => _registry.GetOrCreate(_namespace);
+
+    public NamespaceContext GetDefaultNamespaceContext() => _registry.GetOrCreate("default");
+
+    private async Task StartCoreAsync()
+    {
         PublicPort = EmulatorInfrastructure.GetFreePort();
         AmqpPort = EmulatorInfrastructure.GetFreePort();
         HttpPort = EmulatorInfrastructure.GetFreePort();
 
-        // 1. Start Kestrel with plain HTTP on internal port
         var builder = WebApplication.CreateBuilder();
         builder.WebHost.ConfigureKestrel(k =>
         {
@@ -59,41 +99,90 @@ public class ServiceBusEmulatorFixture : IAsyncDisposable
         _webApp.MapDashboardSse(_eventBus);
         await _webApp.StartAsync();
 
-        // 2. Start scheduled message processor
         _scheduledProcessor = new ScheduledMessageProcessor(_registry.GetOrCreate("default"));
         _scheduledProcessor.StartBackground(TimeSpan.FromMilliseconds(500));
 
-        // 3. Start AMQP on internal port (with SASL for Azure SDK compatibility)
         _amqpServer = new AmqpServer(new AmqpServerOptions { Port = AmqpPort }, _registry, _scheduledProcessor);
         _amqpServer.Start();
 
-        // 4. Start multiplexer on public port with TLS termination
         var cert = EmulatorInfrastructure.LoadDevCert();
         _multiplexerCts = new CancellationTokenSource();
         _multiplexer = new TcpMultiplexer(PublicPort, AmqpPort, HttpPort, cert);
-        _ = _multiplexer.StartAsync(_multiplexerCts.Token);
+        _multiplexerTask = _multiplexer.StartAsync(_multiplexerCts.Token);
     }
 
-    public async Task StopAsync()
+    private async Task CleanupAsync()
     {
         if (_multiplexerCts is not null)
-            await _multiplexerCts.CancelAsync();
-        _amqpServer?.Stop();
-        _scheduledProcessor?.Dispose();
-        if (_webApp is not null)
-            await _webApp.StopAsync();
-    }
+        {
+            try
+            {
+                await _multiplexerCts.CancelAsync();
+            }
+            catch
+            {
+                // Best effort during test teardown/retry.
+            }
+        }
 
-    public async ValueTask DisposeAsync()
-    {
-        await StopAsync();
+        if (_multiplexerTask is not null)
+        {
+            try
+            {
+                await _multiplexerTask;
+            }
+            catch (OperationCanceledException)
+            {
+            }
+            catch (ObjectDisposedException)
+            {
+            }
+        }
+
+        try
+        {
+            _amqpServer?.Stop();
+        }
+        catch
+        {
+            // Best effort during test teardown/retry.
+        }
+
         _amqpServer?.Dispose();
-        _multiplexerCts?.Dispose();
+        _amqpServer = null;
+
+        _scheduledProcessor?.Dispose();
+        _scheduledProcessor = null;
+
         if (_webApp is not null)
+        {
+            try
+            {
+                await _webApp.StopAsync();
+            }
+            catch
+            {
+                // Best effort during test teardown/retry.
+            }
+
             await _webApp.DisposeAsync();
+            _webApp = null;
+        }
+
+        _multiplexerTask = null;
+        _multiplexer = null;
+        _multiplexerCts?.Dispose();
+        _multiplexerCts = null;
     }
 
-    public NamespaceContext GetNamespaceContext() => _registry.GetOrCreate(_namespace);
+    private static bool IsPortBindingFailure(Exception ex)
+    {
+        if (ex is SocketException { SocketErrorCode: SocketError.AddressAlreadyInUse })
+            return true;
 
-    public NamespaceContext GetDefaultNamespaceContext() => _registry.GetOrCreate("default");
+        if (ex.Message.Contains("Address already in use", StringComparison.OrdinalIgnoreCase))
+            return true;
+
+        return ex.InnerException is not null && IsPortBindingFailure(ex.InnerException);
+    }
 }
