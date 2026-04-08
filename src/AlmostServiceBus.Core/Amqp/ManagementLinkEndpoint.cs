@@ -22,9 +22,9 @@ public class ManagementLinkEndpoint : IRequestProcessor
     private readonly ScheduledMessageProcessor? _scheduledProcessor;
     private readonly string? _scopedAddress;
     private readonly QueueEntity? _scopedQueue;
-    private readonly ConcurrentDictionary<string, string>? _senderLinkNames;
+    private readonly ConcurrentDictionary<string, EmulatorContainer.SenderLinkTarget>? _senderLinkNames;
 
-    public ManagementLinkEndpoint(NamespaceContext context, ScheduledMessageProcessor? scheduledProcessor = null, string? scopedAddress = null, QueueEntity? scopedQueue = null, ConcurrentDictionary<string, string>? senderLinkNames = null, NamespaceRegistry? registry = null)
+    public ManagementLinkEndpoint(NamespaceContext context, ScheduledMessageProcessor? scheduledProcessor = null, string? scopedAddress = null, QueueEntity? scopedQueue = null, ConcurrentDictionary<string, EmulatorContainer.SenderLinkTarget>? senderLinkNames = null, NamespaceRegistry? registry = null)
     {
         _context = context;
         _registry = registry;
@@ -152,13 +152,22 @@ public class ManagementLinkEndpoint : IRequestProcessor
                         {
                             foreach (var senderLinkKey in EmulatorContainer.BuildSenderLinkRegistryKeys(requestContext.Link.Session.Connection, entityName))
                             {
-                                if (_senderLinkNames.TryGetValue(senderLinkKey, out var registeredPath))
+                                if (_senderLinkNames.TryGetValue(senderLinkKey, out var registeredTarget))
                                 {
-                                    Log.LogDebug("schedule-message: resolved scoped link name '{LinkName}' → entity '{Entity}'", entityName, registeredPath);
-                                    address = registeredPath;
+                                    Log.LogDebug("schedule-message: resolved scoped link name '{LinkName}' → entity '{Entity}' in namespace '{Namespace}'", entityName, registeredTarget.Address, registeredTarget.NamespaceName);
+                                    address = registeredTarget.Address;
+                                    scheduleContext = _registry?.GetOrCreate(registeredTarget.NamespaceName) ?? scheduleContext;
                                     break;
                                 }
                             }
+                        }
+
+                        if (address is null && !string.IsNullOrEmpty(brokered.To))
+                        {
+                            var explicitAddress = brokered.To.TrimStart('/');
+                            var (resolvedQueue, resolvedTopic) = scheduleContext.ResolveSendTarget(explicitAddress);
+                            if (resolvedQueue is not null || resolvedTopic is not null)
+                                address = explicitAddress;
                         }
 
                         address ??= _scopedAddress ?? _scopedQueue?.Name;

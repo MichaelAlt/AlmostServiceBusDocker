@@ -34,7 +34,9 @@ public class EmulatorContainer : IContainer
     // can resolve the target entity from the "associated-link-name" (which is typically
     // the AMQP sender link name, not the entity path). Link names use case-insensitive
     // comparison because the Azure SDK may vary casing across SDK versions.
-    private readonly ConcurrentDictionary<string, string> _senderLinkNames = new(StringComparer.OrdinalIgnoreCase);
+    public readonly record struct SenderLinkTarget(string Address, string NamespaceName);
+
+    private readonly ConcurrentDictionary<string, SenderLinkTarget> _senderLinkNames = new(StringComparer.OrdinalIgnoreCase);
 
     // Reflection accessor for AttachContext's internal constructor.
     // AttachContext(ListenerLink link, Attach attach) is internal in AMQPNetLite,
@@ -243,8 +245,9 @@ public class EmulatorContainer : IContainer
             && !address.Equals("$management", StringComparison.OrdinalIgnoreCase)
             && !address.Equals("$cbs", StringComparison.OrdinalIgnoreCase))
         {
+            var target = new SenderLinkTarget(address, ResolveNamespace(listenerLink.Session.Connection));
             foreach (var key in BuildSenderLinkRegistryKeys(listenerLink.Session.Connection, attach.LinkName))
-                _senderLinkNames[key] = address;
+                _senderLinkNames[key] = target;
         }
 
         if (_linkProcessor != null)
