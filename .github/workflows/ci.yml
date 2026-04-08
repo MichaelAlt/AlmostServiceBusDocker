@@ -192,10 +192,12 @@ jobs:
       - name: Checkout MassTransit submodule
         run: git submodule update --init --depth 1 external/MassTransit
 
-      - name: Setup .NET
+      - name: Setup .NET (9 for MassTransit tests, 10 for emulator host)
         uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: "10.x"
+          dotnet-version: |
+            9.x
+            10.x
 
       # Trust the dev cert so the Azure SDK accepts AMQPS connections to localhost.
       - name: Trust HTTPS dev certificate
@@ -233,7 +235,7 @@ jobs:
         run: |
           dotnet build \
             external/MassTransit/tests/MassTransit.Azure.ServiceBus.Core.Tests \
-            -f net10.0
+            -f net9.0
 
       - name: Run MassTransit Azure Service Bus tests
         env:
@@ -267,7 +269,7 @@ jobs:
           dotnet test \
             external/MassTransit/tests/MassTransit.Azure.ServiceBus.Core.Tests \
             --no-build \
-            -f net10.0 \
+            -f net9.0 \
             --filter "$FILTER" \
             --logger "console;verbosity=normal"
 
