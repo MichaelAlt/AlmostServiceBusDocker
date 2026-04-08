@@ -408,7 +408,7 @@ public class EmulatorContainer : IContainer
                             break;
                         }
                     }
-                    catch
+                    catch (ObjectDisposedException)
                     {
                         // Session/connection may be closing — skip this link.
                     }
