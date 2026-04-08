@@ -3,6 +3,7 @@ name: CI
 on:
   push:
     branches: [main, develop]
+    tags: ['v*']
   pull_request:
 
 jobs:
@@ -334,3 +335,48 @@ jobs:
       - name: Stop emulator
         if: always()
         run: kill "$EMULATOR_PID" 2>/dev/null || true
+
+  pack-and-publish:
+    name: Pack & Publish
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    needs:
+      - internal-tests
+      - wolverine-conformance
+      - nservicebus-tests
+      - masstransit-conformance
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # MinVer needs full history to derive version from tags
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.x"
+
+      - name: Restore
+        run: dotnet restore AlmostServiceBus.sln
+
+      - name: Pack
+        run: |
+          dotnet pack src/AlmostServiceBus.Core --configuration Release --no-restore --output ./nupkgs
+          dotnet pack src/AlmostServiceBus.TestHost --configuration Release --no-restore --output ./nupkgs
+          dotnet pack src/AlmostServiceBus.Aspire.Hosting --configuration Release --no-restore --output ./nupkgs
+
+      - name: NuGet login (OIDC → temp API key)
+        uses: NuGet/login@v1
+        id: login
+        with:
+          user: ${{ secrets.NUGET_USER }}
+
+      - name: Push to NuGet.org
+        run: |
+          dotnet nuget push ./nupkgs/*.nupkg \
+            --api-key ${{ steps.login.outputs.NUGET_API_KEY }} \
+            --source https://api.nuget.org/v3/index.json \
+            --skip-duplicate
