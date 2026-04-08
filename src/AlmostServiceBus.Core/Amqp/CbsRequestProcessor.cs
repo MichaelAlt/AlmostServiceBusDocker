@@ -27,8 +27,8 @@ public class CbsRequestProcessor : IRequestProcessor
     private static readonly ConditionalWeakTable<Connection, NamespaceHolder> _connectionNamespaces = new();
 
     // CBS links are long-lived and can see bursts of token renewals across many
-    // parallel clients, so keep the request credit comfortably high.
-    public int Credit => 10000;
+    // parallel clients, so keep the request credit comfortably above the default.
+    public int Credit => 1000;
 
     public static string? GetNamespaceForConnection(Connection connection)
     {

@@ -13,7 +13,7 @@ namespace AlmostServiceBus.TestHost;
 public class ServiceBusEmulatorFixture : IAsyncDisposable
 {
     private const int MaxStartAttempts = 5;
-    private static readonly TimeSpan RetryDelay = TimeSpan.FromMilliseconds(50);
+    private static readonly TimeSpan InitialRetryDelay = TimeSpan.FromMilliseconds(100);
 
     private WebApplication? _webApp;
     private AmqpServer? _amqpServer;
@@ -56,7 +56,7 @@ public class ServiceBusEmulatorFixture : IAsyncDisposable
             catch (Exception ex) when (IsPortBindingFailure(ex) && attempt < MaxStartAttempts)
             {
                 await CleanupAsync();
-                await Task.Delay(RetryDelay);
+                await Task.Delay(TimeSpan.FromMilliseconds(InitialRetryDelay.TotalMilliseconds * attempt));
             }
             catch
             {
