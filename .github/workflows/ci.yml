@@ -45,7 +45,13 @@ jobs:
         run: |
           dotnet test AlmostServiceBus.sln \
             --no-build \
-            --filter "FullyQualifiedName!~RealAsbConformanceTests"
+            --filter "FullyQualifiedName!~RealAsbConformanceTests" \
+            --results-directory artifacts/test-results/internal \
+            --logger "trx"
+
+      - name: Summarize test results
+        if: always()
+        run: python3 .github/scripts/summarize_trx.py "Internal Tests" artifacts/test-results/internal
 
   # ── Wolverine conformance ───────────────────────────────────────────────────
   # Wolverine's own Azure Service Bus tests connect to the official emulator
@@ -160,7 +166,13 @@ jobs:
             --no-build \
             -f net10.0 \
             --filter "$FILTER" \
-            --logger "console;verbosity=normal"
+            --results-directory artifacts/test-results/wolverine \
+            --logger "console;verbosity=normal" \
+            --logger "trx"
+
+      - name: Summarize test results
+        if: always()
+        run: python3 .github/scripts/summarize_trx.py "Wolverine: ${{ matrix.group }}" artifacts/test-results/wolverine
 
       - name: Stop emulator
         if: always()
@@ -192,7 +204,13 @@ jobs:
         run: |
           dotnet test \
             external/NServiceBus.Transport.AzureServiceBus/src/Tests \
-            --logger "console;verbosity=normal"
+            --results-directory artifacts/test-results/nservicebus \
+            --logger "console;verbosity=normal" \
+            --logger "trx"
+
+      - name: Summarize test results
+        if: always()
+        run: python3 .github/scripts/summarize_trx.py "NServiceBus Tests" artifacts/test-results/nservicebus
 
   # ── MassTransit conformance ─────────────────────────────────────────────────
   # Runs MassTransit's own Azure Service Bus test suite against the emulator.
@@ -295,7 +313,13 @@ jobs:
             --no-build \
             -f net9.0 \
             --filter "$FILTER" \
-            --logger "console;verbosity=normal"
+            --results-directory artifacts/test-results/masstransit \
+            --logger "console;verbosity=normal" \
+            --logger "trx"
+
+      - name: Summarize test results
+        if: always()
+        run: python3 .github/scripts/summarize_trx.py "MassTransit Conformance" artifacts/test-results/masstransit
 
 
       - name: Stop emulator
