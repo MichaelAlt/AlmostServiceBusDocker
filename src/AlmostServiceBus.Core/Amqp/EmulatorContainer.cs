@@ -391,7 +391,34 @@ public class EmulatorContainer : IContainer
 
         if (responseLink == null)
         {
-            // Fallback: if ReplyTo didn't match but there's exactly one response link,
+            // Fallback 1: find a response link on the SAME connection as the request link.
+            // When multiple connections share a single request processor (e.g. $cbs),
+            // each connection has its own response link. The ReplyTo may not match the
+            // stored Target.Address, but we can match by connection identity.
+            lock (entry.ResponseLinks)
+            {
+                foreach (var rl in entry.ResponseLinks.Values)
+                {
+                    try
+                    {
+                        if (rl.Session.Connection == link.Session.Connection)
+                        {
+                            responseLink = rl;
+                            Log.LogDebug("DispatchRequest: using connection-matched response link");
+                            break;
+                        }
+                    }
+                    catch
+                    {
+                        // Session/connection may be closing — skip this link.
+                    }
+                }
+            }
+        }
+
+        if (responseLink == null)
+        {
+            // Fallback 2: if ReplyTo didn't match but there's exactly one response link,
             // use it. This handles cases where the SDK's ReplyTo format doesn't match
             // the Target.Address stored during link attachment.
             lock (entry.ResponseLinks)

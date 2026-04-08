@@ -18,7 +18,7 @@ public class CbsRequestProcessor : IRequestProcessor
     // Used by ServiceBusLinkProcessor to resolve namespaces.
     private static readonly ConcurrentDictionary<int, string> _connectionNamespaces = new();
 
-    public int Credit => 100;
+    public int Credit => 10000;
 
     public static string? GetNamespaceForConnection(Connection connection)
     {
@@ -39,7 +39,11 @@ public class CbsRequestProcessor : IRequestProcessor
             ApplicationProperties = new ApplicationProperties
             {
                 ["status-code"] = 200,
-                ["status-description"] = "OK"
+                ["status-description"] = "OK",
+                // Include an expiration timestamp so the Azure SDK knows when to renew
+                // the token. Without this, some SDK versions may schedule immediate
+                // renewal, flooding the CBS link with requests.
+                ["expiration"] = DateTime.UtcNow.AddHours(1)
             },
             Properties = new Properties
             {
