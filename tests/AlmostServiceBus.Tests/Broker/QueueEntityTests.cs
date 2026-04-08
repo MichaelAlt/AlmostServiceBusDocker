@@ -148,6 +148,24 @@ public class QueueEntityTests
     }
 
     [Fact]
+    public async Task Abandon_AssignsFreshLockToken()
+    {
+        var queue = new QueueEntity("test-queue") { MaxDeliveryCount = 10 };
+        queue.Enqueue(CreateMessage());
+
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        var first = await queue.DequeueAsync(cts.Token);
+        var originalLockToken = first.LockToken;
+
+        queue.Abandon(first.LockToken!);
+
+        var second = await queue.DequeueAsync(cts.Token);
+        Assert.Equal(first.MessageId, second.MessageId);
+        // Lock token must be different to avoid AMQP delivery tag collisions
+        Assert.NotEqual(originalLockToken, second.LockToken);
+    }
+
+    [Fact]
     public async Task Abandon_ExceedsMaxDeliveryCount_DeadLetters()
     {
         var queue = new QueueEntity("test-queue") { MaxDeliveryCount = 2 };

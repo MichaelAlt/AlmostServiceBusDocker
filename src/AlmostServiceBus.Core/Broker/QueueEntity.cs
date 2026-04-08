@@ -242,6 +242,8 @@ public sealed class QueueEntity
         // and throw so the AMQP layer can reject the disposition.
         if (message.LockedUntil != default && DateTimeOffset.UtcNow > message.LockedUntil)
         {
+            // Fresh lock token to avoid delivery tag collisions (see Abandon).
+            message.LockToken = null;
             Enqueue(message);
             throw new MessageLockLostException(lockToken);
         }
@@ -276,6 +278,12 @@ public sealed class QueueEntity
         }
         else
         {
+            // Assign a fresh lock token so the re-delivered message gets a unique AMQP
+            // delivery tag. The Azure SDK tracks pending disposition operations by lock
+            // token (delivery tag); reusing the old token causes
+            // "A pending operation with the same identifier already exists" when the
+            // client tries to settle the re-delivered message.
+            message.LockToken = null;
             Enqueue(message);
         }
     }
