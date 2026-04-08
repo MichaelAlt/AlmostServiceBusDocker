@@ -1,4 +1,9 @@
+<img width="2293" height="1388" alt="image" src="https://github.com/user-attachments/assets/f37927d3-c47e-4eeb-8dc4-29647231f618" />
+
+
 # AlmostServiceBus
+
+
 
 A local Azure Service Bus emulator compatible with the official Azure SDK (`Azure.Messaging.ServiceBus`), MassTransit, Wolverine, and NServiceBus.
 
