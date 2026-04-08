@@ -53,9 +53,9 @@ jobs:
   # UseDevelopmentEmulator=true, which disables TLS.  We start
   # AlmostServiceBus on port 5673 so it becomes a drop-in replacement.
   #
-  # Tests run in parallel both within each job (xUnit MaxParallelThreads=4,
-  # per-class namespace isolation) and across CI jobs (matrix strategy splits
-  # tests into groups that run on separate runners).
+  # Tests run in parallel both within each job (per-class namespace isolation,
+  # MaxParallelThreads=4 — see external/wolverine-patches/parallel-tests.patch)
+  # and across CI jobs (matrix strategy splits tests into groups on separate runners).
   wolverine-conformance:
     name: "Wolverine: ${{ matrix.group }}"
     runs-on: ubuntu-latest
@@ -142,8 +142,7 @@ jobs:
           FILTER="$FILTER&FullyQualifiedName!~tracking_correlation_id_on_everything"
           # Request-reply: named broker reply URI resolution
           FILTER="$FILTER&FullyQualifiedName!~correct_scheme_on_reply_uri"
-          # Note: requeue (will_requeue_and_increment_attempts) and DLQ (dlq_mechanics)
-          # tests are now included — previously excluded, fixed by CBS response link lookup.
+          # Requeue and DLQ tests are enabled (CBS response link lookup supports these scenarios).
           # Back-pressure: tracking can't detect Message1 received after listener restart
           FILTER="$FILTER&FullyQualifiedName!~can_stop_receiving_when_too_busy_and_restart_listeners"
           # Session ordering: Wolverine's BatchedSender uses parallel serialization
