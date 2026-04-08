@@ -137,8 +137,8 @@ jobs:
           FILTER="$FILTER&FullyQualifiedName!~tracking_correlation_id_on_everything"
           # Request-reply: named broker reply URI resolution
           FILTER="$FILTER&FullyQualifiedName!~correct_scheme_on_reply_uri"
-          # Requeue attempt counting: re-enabled after CBS response link lookup fix
-          # DLQ mechanics: re-enabled after CBS response link lookup fix
+          # Note: requeue (will_requeue_and_increment_attempts) and DLQ (dlq_mechanics)
+          # tests are now included — previously excluded, fixed by CBS response link lookup.
           # Back-pressure: tracking can't detect Message1 received after listener restart
           FILTER="$FILTER&FullyQualifiedName!~can_stop_receiving_when_too_busy_and_restart_listeners"
           # Session ordering: Wolverine's BatchedSender uses parallel serialization
