@@ -181,6 +181,7 @@ public class QueueEntityTests
         // Second delivery
         var msg2 = await queue.DequeueAsync(cts.Token);
         Assert.Equal(2, msg2.DeliveryCount);
+        var originalLockToken = msg2.LockToken;
 
         // Abandon at MaxDeliveryCount should dead-letter
         queue.Abandon(msg2.LockToken!);
@@ -189,7 +190,7 @@ public class QueueEntityTests
         var dlqMsg = queue.DeadLetterQueue.TryDequeueImmediate();
         Assert.NotNull(dlqMsg);
         Assert.Equal(msg2.MessageId, dlqMsg!.MessageId);
-        Assert.NotEqual(msg2.LockToken, dlqMsg.LockToken);
+        Assert.NotEqual(originalLockToken, dlqMsg.LockToken);
     }
 
     [Fact]
@@ -200,6 +201,7 @@ public class QueueEntityTests
 
         using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
         var msg = await queue.DequeueAsync(cts.Token);
+        var originalLockToken = msg.LockToken;
 
         queue.DeadLetter(msg.LockToken!, "MaxDeliveryCountExceeded", "Too many retries");
 
@@ -208,7 +210,7 @@ public class QueueEntityTests
         Assert.Equal(msg.MessageId, dlqMsg!.MessageId);
         Assert.Equal("MaxDeliveryCountExceeded", dlqMsg.DeadLetterReason);
         Assert.Equal("Too many retries", dlqMsg.DeadLetterErrorDescription);
-        Assert.NotEqual(msg.LockToken, dlqMsg.LockToken);
+        Assert.NotEqual(originalLockToken, dlqMsg.LockToken);
     }
 
     [Fact]
