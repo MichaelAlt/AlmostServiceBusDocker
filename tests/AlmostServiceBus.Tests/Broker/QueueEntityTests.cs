@@ -189,6 +189,7 @@ public class QueueEntityTests
         var dlqMsg = queue.DeadLetterQueue.TryDequeueImmediate();
         Assert.NotNull(dlqMsg);
         Assert.Equal(msg2.MessageId, dlqMsg!.MessageId);
+        Assert.NotEqual(msg2.LockToken, dlqMsg.LockToken);
     }
 
     [Fact]
@@ -207,6 +208,7 @@ public class QueueEntityTests
         Assert.Equal(msg.MessageId, dlqMsg!.MessageId);
         Assert.Equal("MaxDeliveryCountExceeded", dlqMsg.DeadLetterReason);
         Assert.Equal("Too many retries", dlqMsg.DeadLetterErrorDescription);
+        Assert.NotEqual(msg.LockToken, dlqMsg.LockToken);
     }
 
     [Fact]

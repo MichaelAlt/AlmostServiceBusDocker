@@ -310,6 +310,11 @@ public sealed class QueueEntity
         message.DeadLetterReason = reason;
         message.DeadLetterErrorDescription = description;
         message.DeadLetterSource = Name;
+        // Moving a message to the DLQ creates a new delivery in a different queue.
+        // Reusing the old lock token can collide with an in-flight settlement for the
+        // original delivery in Azure SDK clients ("A pending operation with the same
+        // identifier already exists"), so force the DLQ enqueue to assign a fresh token.
+        message.LockToken = null;
         DeadLetterQueue.Enqueue(message);
     }
 
