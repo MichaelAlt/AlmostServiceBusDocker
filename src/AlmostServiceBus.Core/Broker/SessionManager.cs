@@ -1,27 +1,70 @@
 using System.Collections.Concurrent;
-using System.Threading.Channels;
 
 namespace AlmostServiceBus.Core.Broker;
 
+/// <summary>
+/// Holds per-session state including a priority queue that delivers messages
+/// in sequence-number order (FIFO), regardless of the order concurrent
+/// producers write to it.
+/// </summary>
 public class SessionState
 {
+    private readonly PriorityQueue<BrokeredMessage, long> _messages = new();
+    private readonly SemaphoreSlim _signal = new(0);
+    private readonly object _lock = new();
+    private int _messageCount;
+
     public string SessionId { get; }
-    public Channel<BrokeredMessage> Messages { get; }
     public string? LockedBy { get; set; }
     public DateTimeOffset LockedUntil { get; set; }
     public byte[]? UserState { get; set; }
-    private int _messageCount;
 
     public int MessageCount => _messageCount;
 
     public SessionState(string sessionId)
     {
         SessionId = sessionId;
-        Messages = Channel.CreateUnbounded<BrokeredMessage>();
     }
 
-    public void IncrementCount() => Interlocked.Increment(ref _messageCount);
-    public void DecrementCount() => Interlocked.Decrement(ref _messageCount);
+    /// <summary>
+    /// Adds a message to the session, ordered by <see cref="BrokeredMessage.SequenceNumber"/>.
+    /// Thread-safe.
+    /// </summary>
+    public void Enqueue(BrokeredMessage message)
+    {
+        lock (_lock)
+        {
+            _messages.Enqueue(message, message.SequenceNumber);
+            Interlocked.Increment(ref _messageCount);
+        }
+
+        _signal.Release();
+    }
+
+    /// <summary>
+    /// Attempts to dequeue the message with the lowest sequence number.
+    /// Returns <c>false</c> when the queue is empty.
+    /// </summary>
+    public bool TryDequeue(out BrokeredMessage? message)
+    {
+        lock (_lock)
+        {
+            if (_messages.Count > 0)
+            {
+                message = _messages.Dequeue();
+                Interlocked.Decrement(ref _messageCount);
+                return true;
+            }
+        }
+
+        message = null;
+        return false;
+    }
+
+    /// <summary>
+    /// Asynchronously waits until at least one message is available.
+    /// </summary>
+    public Task WaitToReadAsync(CancellationToken ct) => _signal.WaitAsync(ct);
 
     public bool IsLocked => LockedBy is not null && DateTimeOffset.UtcNow < LockedUntil;
 }
@@ -46,8 +89,7 @@ public class SessionManager
             throw new InvalidOperationException("Messages sent to a session-enabled queue must have a SessionId.");
 
         var session = _sessions.GetOrAdd(message.SessionId, id => new SessionState(id));
-        session.Messages.Writer.TryWrite(message);
-        session.IncrementCount();
+        session.Enqueue(message);
     }
 
     /// <summary>

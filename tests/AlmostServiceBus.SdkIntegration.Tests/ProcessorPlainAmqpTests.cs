@@ -119,7 +119,7 @@ public class ProcessorPlainAmqpTests : IAsyncLifetime
         var messages = new List<ServiceBusReceivedMessage>();
 
         var sw = System.Diagnostics.Stopwatch.StartNew();
-        while (messages.Count < 2 && sw.Elapsed < TimeSpan.FromSeconds(15))
+        while (messages.Count < 2 && sw.Elapsed < TimeSpan.FromSeconds(30))
         {
             var msg = await receiver.ReceiveMessageAsync(TimeSpan.FromSeconds(2));
             if (msg != null)

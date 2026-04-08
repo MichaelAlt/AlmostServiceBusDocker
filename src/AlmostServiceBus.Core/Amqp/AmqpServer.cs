@@ -53,8 +53,18 @@ public class AmqpServer : IDisposable
 
     public void Stop()
     {
-        _listener?.Close();
-        _listener = null;
+        try
+        {
+            _listener?.Close();
+        }
+        catch (ObjectDisposedException)
+        {
+            // Connection may already be closed by the remote peer during shutdown — ignore.
+        }
+        finally
+        {
+            _listener = null;
+        }
     }
 
     public void Dispose()

@@ -120,11 +120,16 @@ public sealed class QueueEntity
             if (string.IsNullOrEmpty(message.SessionId))
                 return; // silently drop messages without SessionId
 
-            Sessions!.Enqueue(message);
-            // Also track in _allMessages for dashboard peek
+            // Assign sequence number and lock token BEFORE enqueuing to the
+            // SessionManager so the PriorityQueue can order by SequenceNumber.
+            // Clone() resets SequenceNumber to 0, so messages arriving via
+            // topic subscription forwarding need a fresh one here.
             message.LockToken ??= Guid.NewGuid().ToString();
             if (message.SequenceNumber == 0)
                 message.SequenceNumber = Interlocked.Increment(ref _sequenceNumber);
+
+            Sessions!.Enqueue(message);
+            // Also track in _allMessages for dashboard peek
             _allMessages[message.LockToken!] = message;
             Interlocked.Increment(ref _messageCount);
             _eventBus?.Publish(new MessageEvent(

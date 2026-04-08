@@ -58,15 +58,14 @@ public class SessionReceiverLinkEndpoint : LinkEndpoint
                     continue;
                 }
 
-                if (!_session.Messages.Reader.TryRead(out var brokered))
+                if (!_session.TryDequeue(out var brokered))
                 {
                     // Block until a session message is available rather than busy-polling.
-                    await _session.Messages.Reader.WaitToReadAsync(ct);
+                    await _session.WaitToReadAsync(ct);
                     continue;
                 }
 
-                _session.DecrementCount();
-                brokered.DeliveryCount++;
+                brokered!.DeliveryCount++;
                 brokered.LockedUntil = DateTimeOffset.UtcNow.Add(_queue.LockDuration);
                 _queue.TrackPending(brokered);
 
