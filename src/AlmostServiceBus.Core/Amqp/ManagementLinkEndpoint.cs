@@ -137,7 +137,7 @@ public class ManagementLinkEndpoint : IRequestProcessor
                             continue;
                         }
 
-                        var seqNo = _scheduledProcessor.Schedule(address, brokered);
+                        var seqNo = _scheduledProcessor.Schedule(address, brokered, _context);
                         sequenceNumbers.Add(seqNo);
                     }
                 }

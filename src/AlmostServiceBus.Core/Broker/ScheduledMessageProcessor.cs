@@ -9,9 +9,9 @@ namespace AlmostServiceBus.Core.Broker;
 /// </summary>
 public sealed class ScheduledMessageProcessor : IDisposable
 {
-    private record ScheduledEntry(string EntityName, BrokeredMessage Message);
+    private record ScheduledEntry(string EntityName, BrokeredMessage Message, NamespaceContext Namespace);
 
-    private readonly NamespaceContext _namespace;
+    private readonly NamespaceContext _defaultNamespace;
     private readonly ConcurrentDictionary<long, ScheduledEntry> _scheduled = new();
 
     private CancellationTokenSource? _cts;
@@ -19,17 +19,28 @@ public sealed class ScheduledMessageProcessor : IDisposable
 
     public ScheduledMessageProcessor(NamespaceContext namespaceContext)
     {
-        _namespace = namespaceContext;
+        _defaultNamespace = namespaceContext;
     }
 
     /// <summary>
     /// Assigns a sequence number, stores the message for deferred delivery, and returns the sequence number.
+    /// Uses the default namespace context for entity resolution at delivery time.
     /// </summary>
     public long Schedule(string entityName, BrokeredMessage message)
     {
-        var seqNo = _namespace.NextSequenceNumber();
+        return Schedule(entityName, message, _defaultNamespace);
+    }
+
+    /// <summary>
+    /// Assigns a sequence number, stores the message for deferred delivery, and returns the sequence number.
+    /// The supplied <paramref name="namespaceContext"/> is used to resolve the target entity at delivery time,
+    /// ensuring scheduled messages are delivered to the correct namespace when namespace isolation is active.
+    /// </summary>
+    public long Schedule(string entityName, BrokeredMessage message, NamespaceContext namespaceContext)
+    {
+        var seqNo = namespaceContext.NextSequenceNumber();
         message.SequenceNumber = seqNo;
-        _scheduled[seqNo] = new ScheduledEntry(entityName, message);
+        _scheduled[seqNo] = new ScheduledEntry(entityName, message, namespaceContext);
         return seqNo;
     }
 
@@ -61,8 +72,8 @@ public sealed class ScheduledMessageProcessor : IDisposable
             // Clear the scheduled time before delivery
             entry.Message.ScheduledEnqueueTimeUtc = null;
 
-            // Deliver to the resolved target
-            var (queue, topic) = _namespace.ResolveSendTarget(entry.EntityName);
+            // Deliver to the resolved target using the namespace stored at schedule time
+            var (queue, topic) = entry.Namespace.ResolveSendTarget(entry.EntityName);
 
             if (queue is not null)
                 queue.Enqueue(entry.Message);
