@@ -34,18 +34,18 @@ function timeAgo(iso: string): string {
 </template>
 
 <style scoped>
-.row { padding: 8px 12px; border-bottom: 1px solid var(--border-subtle); cursor: pointer; }
+.row { padding: 8px 12px; border-bottom: 1px solid var(--border-subtle); cursor: pointer; transition: background 0.1s; }
 .row:hover { background: var(--bg-surface); }
 .row.selected { background: var(--bg-surface); border-left: 3px solid var(--blue); }
-.row.consumed { opacity: 0.7; }
-.row.deadlettered { opacity: 0.7; }
+.row.consumed { opacity: 0.55; }
+.row.deadlettered { opacity: 0.55; }
 .header { display: flex; justify-content: space-between; align-items: center; }
-.msg-id { color: var(--text); font-weight: 500; font-size: 11px; display: flex; align-items: center; gap: 4px; }
+.msg-id { color: var(--text); font-weight: 500; font-size: 11px; display: flex; align-items: center; gap: 4px; font-family: 'Cascadia Code', 'Fira Code', monospace; }
 .state-icon { font-size: 12px; font-weight: 700; }
 .consumed-icon { color: var(--green); }
 .dl-icon { color: var(--red); }
 .time { color: var(--text-muted); font-size: 9px; }
 .tags { display: flex; gap: 4px; margin-top: 5px; flex-wrap: wrap; }
-.tag { background: var(--bg-crust); color: var(--green); padding: 1px 6px; border-radius: 3px; font-size: 9px; font-family: monospace; }
+.tag { background: var(--bg-crust); color: var(--green); padding: 1px 6px; border-radius: 4px; font-size: 9px; font-family: 'Cascadia Code', 'Fira Code', monospace; }
 .tag:nth-child(even) { color: var(--yellow); }
 </style>

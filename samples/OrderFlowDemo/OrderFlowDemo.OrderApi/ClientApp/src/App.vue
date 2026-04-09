@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { useSse } from './composables/useSse'
 import { useDashboardStore } from './composables/useDashboardStore'
-import SidebarNav from './components/SidebarNav.vue'
 import ScenarioBar from './components/ScenarioBar.vue'
 import MetricCards from './components/MetricCards.vue'
 import PipelineFlow from './components/PipelineFlow.vue'
@@ -19,10 +18,6 @@ onEvent(processEvent)
 
 <template>
   <div class="app-shell">
-    <!-- Left: charcoal sidebar -->
-    <SidebarNav :connected="connected" />
-
-    <!-- Right: top bar + scrollable content -->
     <div class="app-right">
       <header class="top-bar">
         <div class="top-bar-left">
