@@ -10,15 +10,11 @@ public static class AlmostServiceBusBuilderExtensions
 {
     /// <summary>
     /// Adds AlmostServiceBus as an executable resource.
-    /// The emulator Host project is built and run via <c>dotnet run</c>.
+    /// The emulator is launched via <c>dotnet exec</c> using the Host binary
+    /// embedded in this NuGet package.
     /// </summary>
     /// <param name="builder">The distributed application builder.</param>
     /// <param name="name">The resource name (used in the Aspire dashboard and for <c>WithReference</c>).</param>
-    /// <param name="hostProjectPath">
-    /// Absolute or relative path to the <c>AlmostServiceBus.Host.csproj</c> project.
-    /// When <c>null</c>, the method attempts to locate the project relative to the current
-    /// working directory by walking up the directory tree looking for the solution root.
-    /// </param>
     /// <param name="port">
     /// The port the emulator listens on for AMQP and HTTPS traffic.
     /// When <c>null</c>, Aspire assigns a free port automatically.
@@ -31,19 +27,17 @@ public static class AlmostServiceBusBuilderExtensions
     public static IResourceBuilder<AlmostServiceBusResource> AddServiceBusEmulator(
         this IDistributedApplicationBuilder builder,
         string name,
-        string? hostProjectPath = null,
         int? port = null,
         int dashboardPort = 15672)
     {
-        hostProjectPath ??= ResolveHostProjectPath(builder);
+        var hostDll = ResolveHostDll();
 
-        var resource = new AlmostServiceBusResource(name, ".", dashboardPort);
+        var resource = new AlmostServiceBusResource(name, Path.GetDirectoryName(hostDll)!, dashboardPort);
 
         var args = new List<object>
         {
-            "run",
-            "--project",
-            hostProjectPath,
+            "exec",
+            hostDll,
             "--no-launch-profile",
         };
 
@@ -68,34 +62,82 @@ public static class AlmostServiceBusBuilderExtensions
     }
 
     /// <summary>
-    /// Tries to find the Host project by looking for the solution root (a directory
-    /// containing <c>AlmostServiceBus.sln</c>) starting from the AppHost working
-    /// directory and walking upward.
+    /// Adds AlmostServiceBus as an executable resource, running a Host project from source.
+    /// Use this overload when developing against the emulator source code.
     /// </summary>
-    private static string ResolveHostProjectPath(IDistributedApplicationBuilder builder)
+    /// <param name="builder">The distributed application builder.</param>
+    /// <param name="name">The resource name.</param>
+    /// <param name="hostProjectPath">Absolute or relative path to <c>AlmostServiceBus.Host.csproj</c>.</param>
+    /// <param name="port">The emulator port. When <c>null</c>, Aspire assigns a free port.</param>
+    /// <param name="dashboardPort">The dashboard port. Defaults to <c>15672</c>.</param>
+    public static IResourceBuilder<AlmostServiceBusResource> AddServiceBusEmulator(
+        this IDistributedApplicationBuilder builder,
+        string name,
+        string hostProjectPath,
+        int? port = null,
+        int dashboardPort = 15672)
     {
-        var searchDir = builder.AppHostDirectory;
+        var resource = new AlmostServiceBusResource(name, ".", dashboardPort);
 
-        var current = new DirectoryInfo(searchDir);
+        var args = new List<object>
+        {
+            "run",
+            "--project",
+            hostProjectPath,
+            "--no-launch-profile",
+        };
+
+        var resourceBuilder = builder.AddResource(resource)
+            .WithArgs(args.ToArray())
+            .WithEndpoint(port, name: "servicebus", scheme: "tcp", isProxied: false)
+            .WithEndpoint(dashboardPort, dashboardPort, name: "dashboard", scheme: "http", isProxied: false)
+            .WithExternalHttpEndpoints();
+
+        resourceBuilder = resourceBuilder.WithArgs(context =>
+        {
+            var serviceBusEndpoint = resource.GetEndpoint("servicebus");
+            context.Args.Add("--Port");
+            context.Args.Add(serviceBusEndpoint.Property(EndpointProperty.Port));
+
+            context.Args.Add("--DashboardPort");
+            context.Args.Add(dashboardPort.ToString());
+        });
+
+        return resourceBuilder;
+    }
+
+    /// <summary>
+    /// Locates the embedded Host DLL. Search order:
+    /// 1. NuGet package: tools/ directory relative to this assembly (NuGet layout)
+    /// 2. Local dev: obj/host-publish/ relative to the project source
+    /// </summary>
+    private static string ResolveHostDll()
+    {
+        const string hostDllName = "AlmostServiceBus.Host.dll";
+
+        // NuGet package layout: this assembly is in lib/net10.0/, Host is in tools/
+        var assemblyDir = Path.GetDirectoryName(typeof(AlmostServiceBusBuilderExtensions).Assembly.Location)!;
+        var nugetToolsDir = Path.Combine(assemblyDir, "..", "..", "tools", hostDllName);
+        if (File.Exists(nugetToolsDir))
+            return Path.GetFullPath(nugetToolsDir);
+
+        // Local dev: Host published to obj/host-publish/
+        var localPublish = Path.Combine(assemblyDir, "host-publish", hostDllName);
+        if (File.Exists(localPublish))
+            return Path.GetFullPath(localPublish);
+
+        // Fallback: walk up from assembly looking for the published output
+        var current = new DirectoryInfo(assemblyDir);
         while (current is not null)
         {
-            var candidate = Path.Combine(
-                current.FullName,
-                "src",
-                "AlmostServiceBus.Host",
-                "AlmostServiceBus.Host.csproj");
-
+            var candidate = Path.Combine(current.FullName, "src", "AlmostServiceBus.Aspire.Hosting", "obj", "host-publish", hostDllName);
             if (File.Exists(candidate))
-            {
-                return candidate;
-            }
-
+                return Path.GetFullPath(candidate);
             current = current.Parent;
         }
 
         throw new InvalidOperationException(
-            "Could not locate AlmostServiceBus.Host.csproj. " +
-            "Pass the path explicitly via the hostProjectPath parameter.");
+            $"Could not locate {hostDllName}. If consuming via NuGet, ensure the AlmostServiceBus.Aspire.Hosting package is installed correctly. " +
+            "If building from source, use the overload that takes a hostProjectPath parameter.");
     }
-
 }

@@ -6,10 +6,33 @@
     <Nullable>enable</Nullable>
     <!-- NU1902: transitive KubernetesClient vulnerability from Aspire.Hosting -->
     <NoWarn>$(NoWarn);NU1902</NoWarn>
+    <!-- Path where Host publish output lands before being packed -->
+    <HostPublishDir>$(MSBuildThisFileDirectory)obj\host-publish\</HostPublishDir>
   </PropertyGroup>
 
   <ItemGroup>
     <PackageReference Include="Aspire.Hosting" Version="9.2.1" />
+    <!-- Build the Host project before this one, but don't reference its assembly -->
+    <ProjectReference Include="..\AlmostServiceBus.Host\AlmostServiceBus.Host.csproj"
+                      ReferenceOutputAssembly="false"
+                      SkipGetTargetFrameworkProperties="true"
+                      Private="false" />
+  </ItemGroup>
+
+  <!-- Publish the Host project into obj/host-publish/ before build/pack -->
+  <Target Name="PublishHost" BeforeTargets="Build;Pack">
+    <MSBuild Projects="..\AlmostServiceBus.Host\AlmostServiceBus.Host.csproj"
+             Targets="Publish"
+             Properties="PublishDir=$(HostPublishDir);Configuration=$(Configuration);PublishTrimmed=false;SelfContained=false" />
+  </Target>
+
+  <!-- Include published Host output as NuGet package content under tools/ -->
+  <ItemGroup>
+    <Content Include="$(HostPublishDir)**\*"
+             Pack="true"
+             PackagePath="tools/"
+             CopyToOutputDirectory="Never"
+             Visible="false" />
   </ItemGroup>
 
 </Project>
