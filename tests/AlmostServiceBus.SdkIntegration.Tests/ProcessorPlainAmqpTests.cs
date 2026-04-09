@@ -133,6 +133,67 @@ public class ProcessorPlainAmqpTests : IAsyncLifetime
         Assert.Equal(2, messages.Count);
     }
 
+    /// <summary>
+    /// Mimics Wolverine's inline requeue: processor handles a message, then a DIFFERENT
+    /// sender re-sends to the SAME queue. The processor should receive the re-sent message.
+    /// This is the exact pattern used by InlineAzureServiceBusListener._defer + _requeue.
+    /// </summary>
+    [Fact]
+    public async Task PlainAmqp_Processor_ReceivesResendToSameQueue()
+    {
+        var context = _fixture.GetDefaultNamespaceContext();
+        context.CreateQueue("resend-same-queue");
+
+        await using var client = CreatePlainAmqpClient();
+
+        // Pre-create a sender for the same queue (like Wolverine's _requeue sender)
+        var resender = client.CreateSender("resend-same-queue");
+
+        // Send the initial message
+        var sender = client.CreateSender("resend-same-queue");
+        await sender.SendMessageAsync(new ServiceBusMessage("original") { Subject = "Attempt1" });
+        await sender.CloseAsync();
+
+        var subjects = new List<string>();
+        var allDone = new TaskCompletionSource();
+
+        var processor = client.CreateProcessor("resend-same-queue");
+        processor.ProcessMessageAsync += async args =>
+        {
+            subjects.Add(args.Message.Subject);
+
+            if (args.Message.Subject == "Attempt1")
+            {
+                // Simulate Wolverine's _defer: complete original, then re-send
+                // (processor auto-completes, so we just send the new message)
+                await resender.SendMessageAsync(new ServiceBusMessage("resent")
+                {
+                    Subject = "Attempt2",
+                    MessageId = Guid.NewGuid().ToString()
+                });
+            }
+            else if (args.Message.Subject == "Attempt2")
+            {
+                allDone.TrySetResult();
+            }
+        };
+        processor.ProcessErrorAsync += args =>
+        {
+            Console.WriteLine($"[RESEND-ERROR] {args.Exception}");
+            return Task.CompletedTask;
+        };
+
+        await processor.StartProcessingAsync();
+        var completed = await Task.WhenAny(allDone.Task, Task.Delay(TimeSpan.FromSeconds(10)));
+        await processor.StopProcessingAsync();
+        await resender.CloseAsync();
+
+        Assert.True(allDone.Task.IsCompletedSuccessfully,
+            $"Only received: [{string.Join(", ", subjects)}]");
+        Assert.Contains("Attempt1", subjects);
+        Assert.Contains("Attempt2", subjects);
+    }
+
     [Fact]
     public async Task PlainAmqp_TwoMessages_SentIndividually_Processor_ReceivesBoth()
     {
