@@ -410,6 +410,17 @@ public sealed class QueueEntity : IDisposable
                 // (e.g. Complete/Abandon), TryRemove returns false and we skip.
                 if (_pending.TryRemove(lockToken, out var expired))
                 {
+                    // Re-check: RenewLock may have extended LockedUntil between
+                    // the expiry check above and the TryRemove. If the lock is now
+                    // valid, put the message back — re-enqueuing a renewed message
+                    // causes duplicate delivery and permanent R-DUPE cycles in
+                    // MassTransit's ConsumerAgent tracking.
+                    if (expired.LockedUntil > DateTimeOffset.UtcNow)
+                    {
+                        _pending[lockToken] = expired;
+                        continue;
+                    }
+
                     ReEnqueueExpired(lockToken, expired);
                 }
             }

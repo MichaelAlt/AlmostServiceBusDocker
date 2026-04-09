@@ -267,6 +267,96 @@ public abstract class ConformanceTestBase : IAsyncLifetime
         await receiver.CompleteMessageAsync(redelivered);
     }
 
+    [Fact]
+    public async Task RenewMessageLock_ExtendsLock_CompletionSucceedsAfterOriginalExpiry()
+    {
+        ThrowIfSkipped();
+        var options = new CreateQueueOptions("placeholder")
+        {
+            LockDuration = TimeSpan.FromSeconds(5)
+        };
+        var queue = await CreateTestQueueAsync(options);
+
+        await using var sender = Client.CreateSender(queue);
+        await sender.SendMessageAsync(new ServiceBusMessage("renew-test"));
+
+        await using var receiver = Client.CreateReceiver(queue, new ServiceBusReceiverOptions
+        {
+            ReceiveMode = ServiceBusReceiveMode.PeekLock
+        });
+
+        var msg = await receiver.ReceiveMessageAsync(TimeSpan.FromSeconds(5));
+        Assert.NotNull(msg);
+
+        // Wait 3s (past half the lock), then renew
+        await Task.Delay(TimeSpan.FromSeconds(3));
+        await receiver.RenewMessageLockAsync(msg);
+
+        // Wait another 4s — past the ORIGINAL lock expiry, but within the renewed window
+        await Task.Delay(TimeSpan.FromSeconds(4));
+
+        // Complete should succeed because the lock was renewed
+        await receiver.CompleteMessageAsync(msg);
+
+        // Queue should be empty — message was completed, not re-enqueued
+        var next = await receiver.ReceiveMessageAsync(TimeSpan.FromSeconds(2));
+        Assert.Null(next);
+    }
+
+    [Fact]
+    public async Task Processor_AutoLockRenewal_CompletesAfterOriginalExpiry()
+    {
+        ThrowIfSkipped();
+        var options = new CreateQueueOptions("placeholder")
+        {
+            LockDuration = TimeSpan.FromSeconds(5)
+        };
+        var queue = await CreateTestQueueAsync(options);
+
+        await using var sender = Client.CreateSender(queue);
+        await sender.SendMessageAsync(new ServiceBusMessage("processor-renew-test"));
+
+        var completed = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        await using var processor = Client.CreateProcessor(queue, new ServiceBusProcessorOptions
+        {
+            MaxConcurrentCalls = 1,
+            AutoCompleteMessages = false,
+            // Auto-renewal should keep the lock alive during long processing
+            MaxAutoLockRenewalDuration = TimeSpan.FromMinutes(1),
+            ReceiveMode = ServiceBusReceiveMode.PeekLock
+        });
+
+        processor.ProcessMessageAsync += async args =>
+        {
+            // Simulate long processing that exceeds the 5s lock duration
+            await Task.Delay(TimeSpan.FromSeconds(8), args.CancellationToken);
+
+            // This should succeed because auto-renewal kept the lock alive
+            await args.CompleteMessageAsync(args.Message, args.CancellationToken);
+            completed.TrySetResult(true);
+        };
+
+        processor.ProcessErrorAsync += args =>
+        {
+            completed.TrySetException(args.Exception);
+            return Task.CompletedTask;
+        };
+
+        await processor.StartProcessingAsync();
+
+        var result = await Task.WhenAny(completed.Task, Task.Delay(TimeSpan.FromSeconds(30)));
+        Assert.True(result == completed.Task, "Processor should have completed within 30s");
+        Assert.True(await completed.Task);
+
+        await processor.StopProcessingAsync();
+
+        // Queue should be empty — message was completed, not re-enqueued
+        await using var receiver = Client.CreateReceiver(queue);
+        var next = await receiver.ReceiveMessageAsync(TimeSpan.FromSeconds(2));
+        Assert.Null(next);
+    }
+
     // ══════════════════════════════════════════════════════════════════════════
     // Test 3: Concurrent Message Delivery
     // ══════════════════════════════════════════════════════════════════════════

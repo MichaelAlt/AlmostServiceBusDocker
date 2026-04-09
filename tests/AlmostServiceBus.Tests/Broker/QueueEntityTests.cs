@@ -242,4 +242,53 @@ public class QueueEntityTests
         var ex = Record.Exception(() => queue.Complete(msg.LockToken!));
         Assert.Null(ex);
     }
+
+    [Fact]
+    public async Task RenewLock_PreventsExpirySweep_NoDoubleDelivery()
+    {
+        // Reproduces the race between SweepExpiredLocks and RenewLock:
+        // without the fix, the sweep could re-enqueue a message whose lock
+        // was just renewed, causing duplicate delivery (R-DUPE in MassTransit).
+        //
+        // Lock duration must be longer than the sweep interval (5s) so that
+        // after renewal, the lock doesn't re-expire before the sweep runs.
+        var queue = new QueueEntity("test-queue") { LockDuration = TimeSpan.FromSeconds(10) };
+        queue.Enqueue(CreateMessage());
+
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+        var msg = await queue.DequeueAsync(cts.Token);
+        var originalLockToken = msg.LockToken!;
+
+        // Let the lock expire (10s duration + 1s buffer)
+        await Task.Delay(TimeSpan.FromSeconds(11));
+
+        // Renew the lock — simulates the SDK's auto-renewal arriving just as
+        // the sweep timer fires. The lock was expired, but the message is
+        // still in _pending (sweep may or may not have run yet).
+        var newExpiry = queue.RenewLock(originalLockToken);
+
+        if (newExpiry is null)
+        {
+            // Sweep already ran and removed from _pending before renewal.
+            // The message was re-enqueued — consume it to clean up.
+            // This is valid behaviour; the race didn't occur in this run.
+            var redelivered = queue.TryDequeueImmediate();
+            Assert.NotNull(redelivered);
+            return;
+        }
+
+        Assert.True(newExpiry > DateTimeOffset.UtcNow);
+
+        // Give the background sweep timer a chance to run (fires every 5s).
+        // The renewed lock should prevent re-enqueue.
+        await Task.Delay(TimeSpan.FromSeconds(6));
+
+        // The message should still be completable with the original lock token
+        // (i.e. NOT re-enqueued by the sweep).
+        queue.Complete(originalLockToken);
+
+        // Queue should be empty — no duplicate delivery
+        var next = queue.TryDequeueImmediate();
+        Assert.Null(next);
+    }
 }
