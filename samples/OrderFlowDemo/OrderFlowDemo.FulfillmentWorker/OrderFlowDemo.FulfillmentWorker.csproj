@@ -1,0 +1,9 @@
+<Project Sdk="Microsoft.NET.Sdk.Worker">
+  <ItemGroup>
+    <ProjectReference Include="..\OrderFlowDemo.Contracts\OrderFlowDemo.Contracts.csproj" />
+    <ProjectReference Include="..\OrderFlowDemo.ServiceDefaults\OrderFlowDemo.ServiceDefaults.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="MassTransit.Azure.ServiceBus.Core" Version="8.4.0" />
+  </ItemGroup>
+</Project>

@@ -1,0 +1,23 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "emulator",
+      "runtimeExecutable": "dotnet",
+      "runtimeArgs": ["run", "--project", "src/AlmostServiceBus.Host"],
+      "port": 5672
+    },
+    {
+      "name": "dashboard",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev", "--prefix", "src/AlmostServiceBus.Dashboard"],
+      "port": 5173
+    },
+    {
+      "name": "orderflow-demo",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev", "--prefix", "samples/OrderFlowDemo/OrderFlowDemo.OrderApi/ClientApp"],
+      "port": 5174
+    }
+  ]
+}

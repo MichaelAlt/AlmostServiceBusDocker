@@ -483,3 +483,5 @@ $RECYCLE.BIN/
 .superpowers/brainstorm
 wwwroot
 .claude/worktrees
+orderflow-sagas*
+.vite

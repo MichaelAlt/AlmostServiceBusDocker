@@ -1,0 +1,482 @@
+/* OrderFlow Demo — Global Stylesheet
+   Palette: #363537 (dark/charcoal), #c11f1f (red), #E9ECEC (light bg), #068d9d (teal)
+*/
+
+:root {
+  --color-bg: #E9ECEC;
+  --color-surface: #ffffff;
+  --color-dark: #363537;
+  --color-red: #c11f1f;
+  --color-teal: #068d9d;
+  --color-border: #dcdfe0;
+  --color-text: #363537;
+  --color-text-muted: #6b7280;
+
+  /* Pipeline stage colours — mockup spec */
+  --stage-payment:   #f59e0b;
+  --stage-inventory: #c98a2e;
+  --stage-picking:   #7b5ea7;
+  --stage-shipping:  #2a7ab5;
+  --stage-shipped:   #14b8a6;
+  --stage-delivered: #2d8f52;
+  --stage-invoiced:  #6b7280;
+  --stage-failed:    #c11f1f;
+  --stage-backordered: #f97316;
+
+  --radius: 12px;
+  --radius-sm: 8px;
+  --shadow: 0 1px 3px rgba(0,0,0,0.08), 0 0 0 1px var(--color-border);
+  --shadow-md: 0 4px 10px rgba(0,0,0,0.08);
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  background: var(--color-bg);
+  color: var(--color-text);
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+/* ─── App Shell ────────────────────────────────────── */
+.app-shell {
+  display: flex;
+  min-height: 100vh;
+}
+
+/* ─── Right panel ───────────────────────────────────── */
+.app-right {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+}
+
+/* ─── Top bar ───────────────────────────────────────── */
+.top-bar {
+  height: 56px;
+  background: var(--color-surface);
+  border-bottom: 1px solid var(--color-border);
+  display: flex;
+  align-items: center;
+  padding: 0 24px;
+  gap: 20px;
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+
+.top-bar-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-shrink: 0;
+}
+
+.page-title {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--color-dark);
+  letter-spacing: 0.01em;
+}
+
+.sse-badge {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  padding: 2px 8px;
+  border-radius: 20px;
+  background: #f3f4f6;
+  color: #9ca3af;
+  border: 1px solid #e5e7eb;
+}
+
+.sse-badge.live {
+  background: rgba(6,141,157,0.1);
+  color: var(--color-teal);
+  border-color: rgba(6,141,157,0.3);
+}
+
+/* ─── Main content ──────────────────────────────────── */
+.main-content {
+  padding: 24px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  flex: 1;
+}
+
+/* ─── Cards ─────────────────────────────────────────── */
+.card {
+  background: var(--color-surface);
+  border-radius: var(--radius);
+  border: 1px solid var(--color-border);
+  box-shadow: var(--shadow);
+  padding: 18px 20px;
+}
+
+.card-title {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--color-text-muted);
+  margin-bottom: 14px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.card-badge {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: rgba(6,141,157,0.12);
+  color: var(--color-teal);
+  border: 1px solid rgba(6,141,157,0.25);
+  text-transform: uppercase;
+}
+
+/* ─── Metric cards ──────────────────────────────────── */
+.metric-grid {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 14px;
+}
+
+.metric-card {
+  border-radius: var(--radius);
+  border: 1px solid var(--color-border);
+  padding: 18px 20px;
+  box-shadow: var(--shadow);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.metric-card.bg-white  { background: var(--color-surface); }
+.metric-card.bg-red    { background: var(--color-red); border-color: var(--color-red); }
+.metric-card.bg-teal   { background: var(--color-teal); border-color: var(--color-teal); }
+
+.metric-label {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--color-text-muted);
+}
+
+.metric-card.bg-red .metric-label,
+.metric-card.bg-teal .metric-label {
+  color: rgba(255,255,255,0.75);
+}
+
+.metric-value {
+  font-size: 32px;
+  font-weight: 800;
+  color: var(--color-dark);
+  line-height: 1;
+}
+
+.metric-card.bg-red .metric-value,
+.metric-card.bg-teal .metric-value {
+  color: #fff;
+}
+
+.metric-value.val-red   { color: var(--color-red); }
+.metric-value.val-green { color: #2d8f52; }
+
+/* ─── Scenario bar ──────────────────────────────────── */
+.scenario-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.scenario-pill {
+  padding: 5px 14px;
+  border-radius: 20px;
+  border: 1.5px solid var(--color-border);
+  background: var(--color-surface);
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 500;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+  color: var(--color-text);
+  white-space: nowrap;
+}
+
+.scenario-pill:hover {
+  border-color: var(--color-teal);
+  color: var(--color-teal);
+}
+
+.scenario-pill.active {
+  background: var(--color-teal);
+  border-color: var(--color-teal);
+  color: #fff;
+}
+
+.scenario-pill.stop {
+  border-color: var(--color-red);
+  color: var(--color-red);
+  background: #fff;
+}
+
+.scenario-pill.stop:hover {
+  background: var(--color-red);
+  color: #fff;
+}
+
+/* ─── Pipeline flow ─────────────────────────────────── */
+.pipeline-nodes {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  overflow-x: auto;
+  padding: 4px 0 8px;
+}
+
+/* RECTANGULAR nodes (not circles) */
+.pipeline-node {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0;
+  flex-shrink: 0;
+}
+
+.pipeline-node-rect {
+  min-width: 76px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  background: #d1d5db;
+  transition: background 0.2s;
+}
+
+.pipeline-node-rect-label {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: rgba(255,255,255,0.9);
+}
+
+.pipeline-node-rect-count {
+  font-size: 20px;
+  font-weight: 800;
+  color: #fff;
+  line-height: 1;
+}
+
+.pipeline-node-rect.has-orders .pipeline-node-rect-label {
+  color: rgba(255,255,255,1);
+}
+
+.pipeline-arrow {
+  color: #c5c9ca;
+  font-size: 18px;
+  padding: 0 6px;
+  flex-shrink: 0;
+  line-height: 1;
+  align-self: center;
+}
+
+/* ─── Layout grids ──────────────────────────────────── */
+.grid-2-1 {
+  display: grid;
+  grid-template-columns: 2fr 1fr;
+  gap: 20px;
+}
+
+.grid-3 {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 20px;
+}
+
+/* ─── Queue depth bars ──────────────────────────────── */
+.queue-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.queue-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.queue-name {
+  font-family: 'Menlo', 'Consolas', 'SF Mono', monospace;
+  font-size: 11px;
+  width: 150px;
+  flex-shrink: 0;
+  color: var(--color-text-muted);
+}
+
+.queue-bar-track {
+  flex: 1;
+  height: 14px;
+  background: var(--color-bg);
+  border-radius: 7px;
+  overflow: hidden;
+}
+
+.queue-bar-fill {
+  height: 100%;
+  border-radius: 7px;
+  transition: width 0.4s ease;
+  min-width: 2px;
+}
+
+.queue-count {
+  font-size: 12px;
+  font-weight: 600;
+  width: 32px;
+  text-align: right;
+  color: var(--color-dark);
+}
+
+/* ─── Warehouse FIFO ────────────────────────────────── */
+.warehouse-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 12px;
+}
+
+.warehouse-lane {
+  background: var(--color-bg);
+  border-radius: var(--radius-sm);
+  padding: 12px;
+  border: 1px solid var(--color-border);
+}
+
+.warehouse-lane-title {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--color-teal);
+  margin-bottom: 10px;
+}
+
+.warehouse-blocks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  min-height: 28px;
+}
+
+.order-block {
+  width: 18px;
+  height: 18px;
+  border-radius: 3px;
+  flex-shrink: 0;
+}
+
+.warehouse-depth-label {
+  margin-top: 8px;
+  font-size: 10px;
+  color: var(--color-text-muted);
+}
+
+/* ─── Live feed ─────────────────────────────────────── */
+.feed-filters {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+}
+
+.feed-filter-pill {
+  padding: 3px 10px;
+  border-radius: 20px;
+  border: 1.5px solid var(--color-border);
+  background: var(--color-surface);
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 500;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+  color: var(--color-text-muted);
+  text-transform: capitalize;
+}
+
+.feed-filter-pill:hover {
+  border-color: var(--color-teal);
+  color: var(--color-teal);
+}
+
+.feed-filter-pill.active {
+  background: var(--color-teal);
+  border-color: var(--color-teal);
+  color: #fff;
+}
+
+.feed-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 340px;
+  overflow-y: auto;
+}
+
+.feed-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 7px 10px;
+  border-radius: 6px;
+  background: var(--color-bg);
+  font-size: 12px;
+  animation: feedIn 0.2s ease;
+}
+
+@keyframes feedIn {
+  from { opacity: 0; transform: translateY(-4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.feed-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  margin-top: 4px;
+  flex-shrink: 0;
+  background: var(--color-teal);
+}
+
+.feed-dot.failed    { background: var(--color-red); }
+.feed-dot.completed { background: #2d8f52; }
+
+.feed-text  { flex: 1; line-height: 1.4; }
+.feed-time  { color: var(--color-text-muted); font-size: 11px; flex-shrink: 0; }
+
+/* ─── Chart containers ──────────────────────────────── */
+.chart-container {
+  position: relative;
+  height: 200px;
+}
+
+/* ─── Responsive ────────────────────────────────────── */
+@media (max-width: 1100px) {
+  .grid-2-1  { grid-template-columns: 1fr; }
+  .grid-3    { grid-template-columns: 1fr 1fr; }
+  .metric-grid { grid-template-columns: repeat(3, 1fr); }
+}
+
+@media (max-width: 800px) {
+  .grid-3    { grid-template-columns: 1fr; }
+  .metric-grid { grid-template-columns: repeat(2, 1fr); }
+}

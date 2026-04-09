@@ -170,28 +170,32 @@ function parentPath(name: string) {
 
 <style scoped>
 .message-list { width: 380px; border-right: 1px solid var(--border); display: flex; flex-direction: column; flex-shrink: 0; }
-.entity-header { padding: 10px 12px; border-bottom: 1px solid var(--border); background: var(--bg-mantle); }
+.entity-header { padding: 12px 14px; border-bottom: 1px solid var(--dark-border); background: var(--dark); }
 .title-row { display: flex; align-items: center; gap: 8px; }
-.name { color: var(--blue); font-weight: 600; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.type-badge { background: var(--bg-surface); color: var(--text-muted); padding: 1px 6px; border-radius: 4px; font-size: 9px; text-transform: uppercase; flex-shrink: 0; }
-.parent { font-size: 10px; color: var(--text-muted); margin-top: 2px; }
-.tabs { display: flex; border-bottom: 1px solid var(--border); background: var(--bg-mantle); }
-.tab { padding: 6px 12px; color: var(--text-muted); font-size: 10px; cursor: pointer; }
-.tab.active { border-bottom: 2px solid var(--blue); color: var(--blue); font-weight: 600; }
-.list-toolbar { display: flex; align-items: center; justify-content: space-between; padding: 4px 12px; background: var(--bg-mantle); border-bottom: 1px solid var(--border-subtle); }
-.live-indicator { font-size: 10px; color: var(--text-muted); }
+.name { color: var(--dark-text); font-weight: 700; font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.type-badge { background: var(--blue); color: #fff; padding: 2px 8px; border-radius: 4px; font-size: 10px; font-weight: 600; text-transform: uppercase; flex-shrink: 0; opacity: 0.85; }
+.parent { font-size: 10px; color: var(--dark-text-muted); margin-top: 2px; }
+.tabs { display: flex; border-bottom: 1px solid var(--dark-border); background: var(--dark); }
+.tab { padding: 8px 14px; color: var(--dark-text-muted); font-size: 12px; cursor: pointer; transition: color 0.1s; border-bottom: 2px solid transparent; }
+.tab:hover { color: var(--dark-text); }
+.tab.active { border-bottom-color: var(--blue); color: var(--blue); font-weight: 700; }
+.list-toolbar { display: flex; align-items: center; justify-content: space-between; padding: 6px 12px; background: var(--bg-mantle); border-bottom: 1px solid var(--border-subtle); }
+.live-indicator { font-size: 11px; font-weight: 500; color: var(--text-muted); }
 .live-indicator.connected { color: var(--green); }
-.toggle { display: flex; align-items: center; gap: 5px; font-size: 10px; color: var(--text-muted); cursor: pointer; user-select: none; }
+.toggle { display: flex; align-items: center; gap: 5px; font-size: 11px; color: var(--text-muted); cursor: pointer; user-select: none; }
 .toggle input { accent-color: var(--blue); width: 12px; height: 12px; }
-.rows { flex: 1; overflow-y: auto; }
+.rows { flex: 1; overflow-y: auto; background: var(--bg-mantle); }
+.rows::-webkit-scrollbar { width: 6px; }
+.rows::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+.rows::-webkit-scrollbar-track { background: transparent; }
 .empty { padding: 20px; text-align: center; color: var(--text-muted); }
 
-.sub-item { padding: 10px 12px; border-bottom: 1px solid var(--border-subtle); }
+.sub-item { padding: 10px 12px; border-bottom: 1px solid var(--border-subtle); transition: background 0.1s; }
 .sub-item.clickable { cursor: pointer; }
 .sub-item.clickable:hover { background: var(--bg-surface); }
 .sub-header { display: flex; justify-content: space-between; align-items: center; }
-.sub-name { color: var(--text); font-weight: 500; font-size: 12px; }
-.badge { background: var(--blue); color: var(--bg-crust); border-radius: 8px; padding: 0 5px; font-size: 9px; }
+.sub-name { color: var(--text); font-weight: 600; font-size: 13px; }
+.badge { background: var(--blue); color: #fff; border-radius: 8px; padding: 1px 6px; font-size: 10px; font-weight: 600; }
 .sub-forward { color: var(--blue); font-size: 10px; margin-top: 3px; }
 .sub-meta { color: var(--text-muted); font-size: 9px; margin-top: 2px; }
 </style>

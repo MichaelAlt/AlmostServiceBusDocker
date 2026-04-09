@@ -85,37 +85,40 @@ function timeAgo(iso: string): string {
 </template>
 
 <style scoped>
-.ns-selector { position: relative; border-bottom: 1px solid var(--border); background: var(--bg-mantle); }
-.input-row { display: flex; align-items: center; padding: 6px 8px; gap: 6px; }
+.ns-selector { position: relative; border-bottom: 1px solid var(--dark-border); background: var(--dark); }
+.input-row { display: flex; align-items: center; padding: 8px 10px; gap: 6px; }
 .input-row input {
-  flex: 1; background: var(--bg-surface); border: none; border-radius: 4px;
-  padding: 6px 10px; color: var(--text); font-size: 11px; outline: none;
-  min-width: 0;
+  flex: 1; background: var(--dark-surface); border: 1px solid var(--dark-border); border-radius: 6px;
+  padding: 6px 10px; color: var(--dark-text); font-size: 11px; outline: none;
+  min-width: 0; transition: border-color 0.15s;
 }
+.input-row input:focus { border-color: var(--blue); }
 .input-row input::placeholder { color: var(--blue); }
 
-.recents { padding: 2px 4px 4px; }
+.recents { padding: 2px 6px 6px; }
 .recent-item {
   display: flex; justify-content: space-between; align-items: center;
-  padding: 4px 8px; cursor: pointer; font-size: 10px; border-radius: 4px;
-  color: var(--text);
+  padding: 4px 8px; cursor: pointer; font-size: 10px; border-radius: 5px;
+  color: var(--dark-text); transition: background 0.1s;
 }
-.recent-item:hover { background: var(--bg-surface); }
-.recent-item.active { color: var(--blue); background: var(--bg-surface); }
+.recent-item:hover { background: var(--dark-surface); }
+.recent-item.active { color: var(--blue); background: var(--dark-surface); }
 .ns-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
-.ns-meta { font-size: 9px; color: var(--text-muted); white-space: nowrap; margin-left: 8px; flex-shrink: 0; }
+.ns-meta { font-size: 9px; color: var(--dark-text-muted); white-space: nowrap; margin-left: 8px; flex-shrink: 0; }
 
 .dropdown {
   position: absolute; top: 100%; left: 0; right: 0; z-index: 10;
-  background: var(--bg-surface); border: 1px solid var(--border);
+  background: var(--dark-surface); border: 1px solid var(--dark-border);
   border-top: none; max-height: 240px; overflow-y: auto;
-  box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+  box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+  border-radius: 0 0 6px 6px;
 }
 .dropdown-item {
   display: flex; justify-content: space-between; align-items: center;
-  padding: 6px 12px; cursor: pointer; font-size: 11px;
+  padding: 7px 12px; cursor: pointer; font-size: 11px; color: var(--dark-text);
+  transition: background 0.1s;
 }
-.dropdown-item:hover { background: var(--bg-base); }
+.dropdown-item:hover { background: var(--dark); }
 .dropdown-item.active { color: var(--blue); }
-.ns-counts { font-size: 9px; color: var(--text-muted); white-space: nowrap; margin-left: 8px; }
+.ns-counts { font-size: 9px; color: var(--dark-text-muted); white-space: nowrap; margin-left: 8px; }
 </style>
