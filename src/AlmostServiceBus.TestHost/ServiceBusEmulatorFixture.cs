@@ -24,6 +24,7 @@ public class ServiceBusEmulatorFixture : IAsyncDisposable
     private readonly MessageEventBus _eventBus = new();
     private readonly NamespaceRegistry _registry;
     private readonly string _namespace;
+    private readonly int? _fixedPublicPort;
 
     public int PublicPort { get; private set; }
     internal int AmqpPort { get; private set; }
@@ -36,10 +37,11 @@ public class ServiceBusEmulatorFixture : IAsyncDisposable
     public string AmqpConnectionString =>
         $"amqp://localhost:{AmqpPort}";
 
-    public ServiceBusEmulatorFixture()
+    public ServiceBusEmulatorFixture(int? publicPort = null)
     {
         _namespace = $"test-{Guid.NewGuid():N}"[..20];
         _registry = new NamespaceRegistry(_eventBus);
+        _fixedPublicPort = publicPort;
     }
 
     public async Task StartAsync()
@@ -82,7 +84,7 @@ public class ServiceBusEmulatorFixture : IAsyncDisposable
 
     private async Task StartCoreAsync()
     {
-        PublicPort = EmulatorInfrastructure.GetFreePort();
+        PublicPort = _fixedPublicPort ?? EmulatorInfrastructure.GetFreePort();
         AmqpPort = EmulatorInfrastructure.GetFreePort();
         HttpPort = EmulatorInfrastructure.GetFreePort();
 
@@ -109,6 +111,16 @@ public class ServiceBusEmulatorFixture : IAsyncDisposable
         _multiplexerCts = new CancellationTokenSource();
         _multiplexer = new TcpMultiplexer(PublicPort, AmqpPort, HttpPort, cert);
         _multiplexerTask = _multiplexer.StartAsync(_multiplexerCts.Token);
+
+        // Azure SDK's ServiceBusAdministrationClient connects to localhost:5300
+        // for management when it detects a localhost connection string.
+        // MassTransit uses this for auto-provisioning topology.
+        try
+        {
+            var mgmtMultiplexer = new TcpMultiplexer(5300, AmqpPort, HttpPort, cert);
+            _ = mgmtMultiplexer.StartAsync(_multiplexerCts.Token);
+        }
+        catch { /* port 5300 may already be in use — MassTransit tests will need it free */ }
     }
 
     private async Task CleanupAsync()
