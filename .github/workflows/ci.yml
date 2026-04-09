@@ -396,6 +396,7 @@ jobs:
           dotnet pack src/AlmostServiceBus.Core --configuration Release --no-restore --output ./nupkgs
           dotnet pack src/AlmostServiceBus.TestHost --configuration Release --no-restore --output ./nupkgs
           dotnet pack src/AlmostServiceBus.Aspire.Hosting --configuration Release --no-restore --output ./nupkgs
+          dotnet pack src/AlmostServiceBus.Host --configuration Release --no-restore --output ./nupkgs
 
       - name: NuGet login (OIDC → temp API key)
         uses: NuGet/login@v1

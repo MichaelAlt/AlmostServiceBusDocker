@@ -31,6 +31,9 @@ Unlike Microsoft's official emulator (which requires Docker with a SQL Server co
 Available as NuGet packages:
 
 ```bash
+# CLI tool — quickest way to get started
+dotnet tool install --global AlmostServiceBus.Tool
+
 # Core emulator (standalone or embedded)
 dotnet add package AlmostServiceBus
 
@@ -46,6 +49,10 @@ dotnet add package AlmostServiceBus.Aspire.Hosting
 ### Run standalone
 
 ```bash
+# If installed as a global tool:
+almost-servicebus
+
+# Or from source:
 dotnet run --project src/AlmostServiceBus.Host
 ```
 

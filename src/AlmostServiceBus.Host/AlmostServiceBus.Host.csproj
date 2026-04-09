@@ -14,6 +14,11 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <!-- Dashboard Vue app lives in a sibling directory -->
     <DashboardDir>$(MSBuildThisFileDirectory)..\AlmostServiceBus.Dashboard</DashboardDir>
+    <!-- dotnet tool packaging -->
+    <IsPackable>true</IsPackable>
+    <PackAsTool>true</PackAsTool>
+    <ToolCommandName>almost-servicebus</ToolCommandName>
+    <PackageId>AlmostServiceBus.Tool</PackageId>
   </PropertyGroup>
 
   <!-- Build the Vue dashboard before the .NET build when wwwroot is missing

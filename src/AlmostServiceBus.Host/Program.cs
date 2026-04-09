@@ -35,7 +35,11 @@ await mgmtApp.StartAsync();
 
 // ── Dashboard server (separate port, no route conflicts) ──
 
-var dashBuilder = WebApplication.CreateBuilder(args);
+var dashBuilder = WebApplication.CreateBuilder(new WebApplicationOptions
+{
+    Args = args,
+    ContentRootPath = AppContext.BaseDirectory,
+});
 dashBuilder.Logging.SetMinimumLevel(LogLevel.Warning);
 dashBuilder.Services.AddViteServices();
 dashBuilder.Services.AddCors();
