@@ -1,16 +1,15 @@
-import { ref, computed, reactive } from 'vue'
-import type { EntityOverview, QueueInfo, TopicInfo, EntityGroup, NamespaceInfo } from '../types'
+import { ref, computed, reactive, onUnmounted } from 'vue'
+import type { EntityOverview, QueueInfo, TopicInfo, EntityGroup, NamespaceInfo, MessageEvent } from '../types'
+import type { NamespaceSse } from './useNamespaceSse'
 import { api } from '../api/client'
 
-export function useEntities(selectedNamespace: () => string) {
+export function useEntities(selectedNamespace: () => string, sse: NamespaceSse) {
   const namespaces = ref<NamespaceInfo[]>([])
   const entities = ref<EntityOverview | null>(null)
   const loading = ref(false)
   const filter = ref('')
   const showAll = ref(false)
   const collapsedGroups = reactive(new Set<string>())
-
-  let nsInterval: ReturnType<typeof setInterval>
 
   async function refreshNamespaces() {
     try { namespaces.value = await api.getNamespaces() } catch {}
@@ -19,35 +18,76 @@ export function useEntities(selectedNamespace: () => string) {
   async function refreshEntities() {
     const ns = selectedNamespace()
     if (!ns) return
-    loading.value = true
-    try { entities.value = await api.getEntities(ns) } catch {}
-    finally { loading.value = false }
+    const isInitialLoad = entities.value === null
+    if (isInitialLoad) loading.value = true
+    try {
+      entities.value = await api.getEntities(ns)
+    } catch {}
+    finally { if (isInitialLoad) loading.value = false }
   }
 
-  function startPolling() {
+  // Apply SSE event deltas to local entity counts for real-time updates.
+  function handleEvent(evt: MessageEvent) {
+    if (!entities.value) return
+
+    const queue = entities.value.queues.find(q => q.name === evt.entity)
+    if (queue) {
+      if (evt.type === 'Enqueued') {
+        queue.totalMessageCount++
+      } else if (evt.type === 'Completed') {
+        queue.consumedCount++
+      } else if (evt.type === 'DeadLettered') {
+        queue.deadLetterCount++
+      }
+
+      // Update subscription badges for any subscription forwarding to this queue
+      for (const topic of entities.value.topics) {
+        for (const sub of topic.subscriptions) {
+          if (sub.forwardTo === evt.entity && evt.type === 'Enqueued') {
+            sub.messageCount++
+          }
+        }
+      }
+
+      // Force reactivity — reassign so computed properties re-evaluate.
+      entities.value = { ...entities.value }
+      return
+    }
+
+    // Unknown entity — a new queue/topic was created. Re-fetch entities and namespaces.
+    if (evt.type === 'Enqueued') {
+      refreshEntities()
+      refreshNamespaces()
+    }
+  }
+
+  let unsubscribe: (() => void) | null = null
+  let nsInterval: ReturnType<typeof setInterval> | null = null
+
+  function start() {
     refreshNamespaces()
     refreshEntities()
-    nsInterval = setInterval(() => {
-      refreshNamespaces()
-      refreshEntities()
-    }, 5000)
+    unsubscribe = sse.subscribe(handleEvent)
+    // Namespaces can appear from other connections outside our SSE stream,
+    // so poll them infrequently.
+    nsInterval = setInterval(refreshNamespaces, 30000)
   }
 
-  function stopPolling() {
-    clearInterval(nsInterval)
+  function stop() {
+    unsubscribe?.()
+    unsubscribe = null
+    if (nsInterval) { clearInterval(nsInterval); nsInterval = null }
   }
 
   function onNamespaceChange() {
     entities.value = null
+    refreshNamespaces()
     refreshEntities()
   }
 
   function toggleGroup(prefix: string) {
-    if (collapsedGroups.has(prefix)) {
-      collapsedGroups.delete(prefix)
-    } else {
-      collapsedGroups.add(prefix)
-    }
+    if (collapsedGroups.has(prefix)) collapsedGroups.delete(prefix)
+    else collapsedGroups.add(prefix)
   }
 
   function isCollapsed(prefix: string) {
@@ -96,6 +136,6 @@ export function useEntities(selectedNamespace: () => string) {
   return {
     namespaces, entities, loading, filter, showAll, topicGroups, filteredQueues,
     totalQueues, totalTopics,
-    toggleGroup, isCollapsed, startPolling, stopPolling, onNamespaceChange, refreshEntities,
+    toggleGroup, isCollapsed, start, stop, onNamespaceChange, refreshEntities,
   }
 }

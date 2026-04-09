@@ -8,7 +8,7 @@ namespace AlmostServiceBus.Core.Broker;
 /// <summary>
 /// An in-memory queue entity backed by a <see cref="Channel{T}"/>.
 /// </summary>
-public sealed class QueueEntity
+public sealed class QueueEntity : IDisposable
 {
     private readonly Channel<BrokeredMessage> _channel;
     private readonly ConcurrentDictionary<string, BrokeredMessage> _pending = new();
@@ -22,6 +22,7 @@ public sealed class QueueEntity
     private MessageEventBus? _eventBus;
     private string? _namespaceName;
     private string? _entityName;
+    private Timer? _lockExpiryTimer;
 
     public QueueEntity(string name, bool isDeadLetterQueue = false)
     {
@@ -33,6 +34,17 @@ public sealed class QueueEntity
             SingleWriter = false,
             SingleReader = false
         });
+
+        // Sweep for expired locks every 5 seconds, matching real ASB behavior
+        // where messages automatically become available after lock expiry.
+        _lockExpiryTimer = new Timer(_ => SweepExpiredLocks(), null, TimeSpan.FromSeconds(5), TimeSpan.FromSeconds(5));
+    }
+
+    public void Dispose()
+    {
+        _lockExpiryTimer?.Dispose();
+        _lockExpiryTimer = null;
+        _deadLetterQueue?.Dispose();
     }
 
     // --- Configuration properties ---
@@ -82,6 +94,8 @@ public sealed class QueueEntity
     /// Used by the dashboard to show queues that have had any activity.
     /// </summary>
     public int TotalMessageCount => _allMessages.Count;
+
+    public int ConsumedCount => _allMessages.Values.Count(m => m.State == MessageState.Consumed);
 
     public void SetEventBus(MessageEventBus bus, string namespaceName, string entityName)
     {
@@ -242,9 +256,7 @@ public sealed class QueueEntity
         // and throw so the AMQP layer can reject the disposition.
         if (message.LockedUntil != default && DateTimeOffset.UtcNow > message.LockedUntil)
         {
-            // Fresh lock token to avoid delivery tag collisions (see Abandon).
-            message.LockToken = null;
-            Enqueue(message);
+            ReEnqueueExpired(lockToken, message);
             throw new MessageLockLostException(lockToken);
         }
 
@@ -278,6 +290,8 @@ public sealed class QueueEntity
         }
         else
         {
+            // Remove old _allMessages entry — Enqueue will create a new one with fresh lock token.
+            _allMessages.TryRemove(lockToken, out _);
             // Assign a fresh lock token so the re-delivered message gets a unique AMQP
             // delivery tag. The Azure SDK tracks pending disposition operations by lock
             // token (delivery tag); reusing the old token causes
@@ -298,10 +312,6 @@ public sealed class QueueEntity
 
         if (_allMessages.TryGetValue(lockToken, out var tracked))
             tracked.State = MessageState.DeadLettered;
-        _eventBus?.Publish(new MessageEvent(
-            MessageEventType.DeadLettered, _namespaceName ?? "", _entityName ?? "",
-            message.MessageId, message.SequenceNumber, message.ContentType,
-            null, null, DateTimeOffset.UtcNow));
         DeadLetter(message, reason, description);
     }
 
@@ -310,6 +320,12 @@ public sealed class QueueEntity
         message.DeadLetterReason = reason;
         message.DeadLetterErrorDescription = description;
         message.DeadLetterSource = Name;
+
+        _eventBus?.Publish(new MessageEvent(
+            MessageEventType.DeadLettered, _namespaceName ?? "", _entityName ?? "",
+            message.MessageId, message.SequenceNumber, message.ContentType,
+            null, null, DateTimeOffset.UtcNow));
+
         // Moving a message to the DLQ creates a new delivery in a different queue.
         // Reusing the old lock token can collide with an in-flight settlement for the
         // original delivery in Azure SDK clients ("A pending operation with the same
@@ -333,15 +349,75 @@ public sealed class QueueEntity
     }
 
     /// <summary>
+    /// Re-enqueues a message whose lock has expired, cleaning up the old _allMessages
+    /// entry and respecting MaxDeliveryCount.
+    /// </summary>
+    private void ReEnqueueExpired(string oldLockToken, BrokeredMessage message)
+    {
+        // Remove old dashboard entry — Enqueue will create a new one with fresh lock token.
+        _allMessages.TryRemove(oldLockToken, out _);
+
+        if (message.DeliveryCount >= MaxDeliveryCount)
+        {
+            DeadLetter(message, "MaxDeliveryCountExceeded",
+                $"Message delivery count exceeded the maximum of {MaxDeliveryCount}.");
+        }
+        else
+        {
+            message.LockToken = null;
+            Enqueue(message);
+        }
+    }
+
+    /// <summary>
+    /// Background sweep that returns expired-lock messages to the queue,
+    /// matching real Azure Service Bus behavior where messages automatically
+    /// become available after lock expiry even if the consumer never settles.
+    /// </summary>
+    private void SweepExpiredLocks()
+    {
+        var now = DateTimeOffset.UtcNow;
+        foreach (var (lockToken, message) in _pending)
+        {
+            if (message.LockedUntil != default && now > message.LockedUntil)
+            {
+                // Atomically remove from pending — if another thread already removed it
+                // (e.g. Complete/Abandon), TryRemove returns false and we skip.
+                if (_pending.TryRemove(lockToken, out var expired))
+                {
+                    ReEnqueueExpired(lockToken, expired);
+                }
+            }
+        }
+    }
+
+    /// <summary>
     /// Returns a snapshot of messages in the queue without removing them.
+    /// Active messages are shown first, then most recent consumed/dead-lettered.
     /// </summary>
     public IReadOnlyList<BrokeredMessage> PeekMessages(int maxCount = 50)
     {
-        return _allMessages.Values
-            .OrderBy(m => m.SequenceNumber)
-            .Take(maxCount)
-            .ToList()
-            .AsReadOnly();
+        // Show active messages first (by sequence number), then recent non-active ones.
+        var active = new List<BrokeredMessage>();
+        var settled = new List<BrokeredMessage>();
+
+        foreach (var m in _allMessages.Values)
+        {
+            if (m.State == MessageState.Active)
+                active.Add(m);
+            else
+                settled.Add(m);
+        }
+
+        active.Sort((a, b) => a.SequenceNumber.CompareTo(b.SequenceNumber));
+        settled.Sort((a, b) => b.SequenceNumber.CompareTo(a.SequenceNumber)); // newest first
+
+        var result = new List<BrokeredMessage>(Math.Min(maxCount, active.Count + settled.Count));
+        result.AddRange(active.Take(maxCount));
+        if (result.Count < maxCount)
+            result.AddRange(settled.Take(maxCount - result.Count));
+
+        return result.AsReadOnly();
     }
 
     private static string? TruncateBody(BrokeredMessage message)

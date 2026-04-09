@@ -33,13 +33,34 @@ public sealed class NamespaceContext
     public QueueEntity CreateQueue(string name)
     {
         Touch();
-        return _queues.GetOrAdd(name, n =>
+        var created = false;
+        var result = _queues.GetOrAdd(name, n =>
         {
             var queue = new QueueEntity(n);
             if (_eventBus is not null)
                 queue.SetEventBus(_eventBus, Name, n);
+            created = true;
             return queue;
         });
+
+        // Resolve any subscriptions that reference this queue as ForwardTo
+        // but couldn't resolve it at creation time (race: subscription created before queue).
+        if (created)
+        {
+            foreach (var topic in _topics.Values)
+            {
+                foreach (var sub in topic.GetSubscriptions())
+                {
+                    if (sub.ResolvedForwardToQueue is null
+                        && string.Equals(sub.ForwardTo, name, StringComparison.OrdinalIgnoreCase))
+                    {
+                        sub.ResolvedForwardToQueue = result;
+                    }
+                }
+            }
+        }
+
+        return result;
     }
 
     public QueueEntity? GetQueue(string name) =>
@@ -84,7 +105,9 @@ public sealed class NamespaceContext
         if (forwardTo is not null)
         {
             sub.ForwardTo = forwardTo;
-            sub.ResolvedForwardToQueue = _queues.GetValueOrDefault(forwardTo);
+            // Auto-create the target queue if it doesn't exist — real ASB requires
+            // ForwardTo targets to exist, and the management plane ensures they do.
+            sub.ResolvedForwardToQueue = CreateQueue(forwardTo);
         }
 
         return sub;

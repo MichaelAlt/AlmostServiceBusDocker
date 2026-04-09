@@ -11,6 +11,7 @@ public record QueueInfo(
     int MessageCount,
     int DeadLetterCount,
     int TotalMessageCount,
+    int ConsumedCount,
     int MaxDeliveryCount,
     string? ForwardTo);
 

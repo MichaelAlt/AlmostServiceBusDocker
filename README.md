@@ -26,6 +26,21 @@ Unlike Microsoft's official emulator (which requires Docker with a SQL Server co
 - **TLS termination** — single port serves AMQPS, HTTPS, and plain AMQP/HTTP
 - **Vue diagnostic dashboard** on port 15672
 
+## Installation
+
+Available as NuGet packages:
+
+```bash
+# Core emulator (standalone or embedded)
+dotnet add package AlmostServiceBus
+
+# Test host with per-test namespace isolation
+dotnet add package AlmostServiceBus.TestHost
+
+# Aspire integration
+dotnet add package AlmostServiceBus.Aspire.Hosting
+```
+
 ## Quick Start
 
 ### Run standalone
@@ -41,7 +56,7 @@ Endpoint=sb://localhost:5672;SharedAccessKeyName=RootManageSharedAccessKey;Share
 
 ### Integration tests (in-process)
 
-Reference `AlmostServiceBus.TestHost` and use `ServiceBusEmulatorFixture`:
+Add `AlmostServiceBus.TestHost` to your test project and use `ServiceBusEmulatorFixture`:
 
 ```csharp
 var fixture = new ServiceBusEmulatorFixture();
@@ -61,7 +76,7 @@ Each fixture gets a unique namespace, so tests run in parallel without interfere
 
 ### Aspire integration
 
-Reference `AlmostServiceBus.Aspire.Hosting`:
+Add `AlmostServiceBus.Aspire.Hosting` to your Aspire host project:
 
 ```csharp
 var builder = DistributedApplication.CreateBuilder(args);

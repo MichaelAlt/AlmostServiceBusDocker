@@ -115,9 +115,10 @@ Console.WriteLine($"  Dashboard:   http://localhost:{dashboardPort}");
 Console.WriteLine();
 Console.WriteLine($"  Connection String: Endpoint=sb://localhost:{publicPort};SharedAccessKeyName=RootManageSharedAccessKey;SharedAccessKey=emulator");
 
-// Block until Ctrl+C, then shut everything down quickly
+// Block until Ctrl+C or process exit, then shut everything down quickly
 var shutdownCts = new CancellationTokenSource();
 Console.CancelKeyPress += (_, e) => { e.Cancel = true; shutdownCts.Cancel(); };
+AppDomain.CurrentDomain.ProcessExit += (_, _) => { shutdownCts.Cancel(); };
 
 try { await Task.Delay(Timeout.Infinite, shutdownCts.Token); } catch (OperationCanceledException) { }
 

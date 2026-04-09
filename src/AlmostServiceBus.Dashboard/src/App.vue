@@ -1,14 +1,65 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { shallowRef, watch, provide, onUnmounted, onMounted } from 'vue'
 import type { MessageInfo } from './types'
 import EntityTree from './components/EntityTree.vue'
 import MessageList from './components/MessageList.vue'
 import MessageDetail from './components/MessageDetail.vue'
+import { useNamespaceSse, sseKey } from './composables/useNamespaceSse'
 
-const selectedNamespace = ref('default')
-const selectedEntity = ref<string | null>(null)
-const selectedEntityType = ref<'queue' | 'topic' | null>(null)
-const selectedMessage = ref<MessageInfo | null>(null)
+function readHash(): { ns: string; entity?: string; type?: 'queue' | 'topic' } {
+  const hash = location.hash.replace(/^#\/?/, '')
+  if (!hash) return { ns: 'default' }
+  const parts = hash.split('/')
+  // Format: #namespace or #namespace/queue/entityName or #namespace/topic/entityName
+  const ns = decodeURIComponent(parts[0]) || 'default'
+  if (parts.length >= 3) {
+    const type = parts[1] as 'queue' | 'topic'
+    const entity = decodeURIComponent(parts.slice(2).join('/'))
+    return { ns, entity, type }
+  }
+  return { ns }
+}
+
+const initial = readHash()
+const selectedNamespace = shallowRef(initial.ns)
+const selectedEntity = shallowRef<string | null>(initial.entity ?? null)
+const selectedEntityType = shallowRef<'queue' | 'topic' | null>(initial.type ?? null)
+const selectedMessage = shallowRef<MessageInfo | null>(null)
+
+// Sync state → URL hash
+function updateHash() {
+  const ns = encodeURIComponent(selectedNamespace.value)
+  if (selectedEntity.value && selectedEntityType.value) {
+    const entity = encodeURIComponent(selectedEntity.value)
+    location.hash = `${ns}/${selectedEntityType.value}/${entity}`
+  } else {
+    location.hash = ns
+  }
+}
+
+watch([selectedNamespace, selectedEntity, selectedEntityType], updateHash)
+
+// Sync URL hash → state (browser back/forward)
+function onHashChange() {
+  const { ns, entity, type } = readHash()
+  if (ns !== selectedNamespace.value) selectedNamespace.value = ns
+  selectedEntity.value = entity ?? null
+  selectedEntityType.value = type ?? null
+  selectedMessage.value = null
+}
+
+onMounted(() => window.addEventListener('hashchange', onHashChange))
+onUnmounted(() => window.removeEventListener('hashchange', onHashChange))
+
+const sse = useNamespaceSse()
+provide(sseKey, sse)
+
+// Connect SSE when namespace changes
+watch(selectedNamespace, (ns) => {
+  sse.connect(ns)
+}, { immediate: true })
+
+onUnmounted(() => sse.disconnect())
 </script>
 
 <template>

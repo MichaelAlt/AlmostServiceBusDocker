@@ -1,21 +1,24 @@
 <script setup lang="ts">
-import { onMounted, onUnmounted, watch } from 'vue'
+import { inject, onMounted, onUnmounted, watch } from 'vue'
 import NamespaceSelector from './NamespaceSelector.vue'
 import { useEntities } from '../composables/useEntities'
+import { sseKey } from '../composables/useNamespaceSse'
 
 const ns = defineModel<string>('namespace', { required: true })
 const entity = defineModel<string | null>('entity', { required: true })
 const entityType = defineModel<'queue' | 'topic' | null>('entityType', { required: true })
 const emit = defineEmits<{ select: [] }>()
 
+const sse = inject(sseKey)!
+
 const {
   namespaces, loading, filter, showAll, topicGroups, filteredQueues,
   totalQueues, totalTopics,
-  toggleGroup, isCollapsed, startPolling, stopPolling, onNamespaceChange,
-} = useEntities(() => ns.value)
+  toggleGroup, isCollapsed, start, stop, onNamespaceChange,
+} = useEntities(() => ns.value, sse)
 
-onMounted(startPolling)
-onUnmounted(stopPolling)
+onMounted(start)
+onUnmounted(stop)
 
 watch(ns, () => {
   entity.value = null
@@ -65,7 +68,8 @@ function shortName(fullName: string) {
       >
         <span class="entity-name">{{ q.name }}</span>
         <span class="entity-badges">
-          <span v-if="q.messageCount > 0" class="badge">{{ q.messageCount }}</span>
+          <span v-if="q.totalMessageCount - q.consumedCount - q.deadLetterCount > 0" class="badge">{{ q.totalMessageCount - q.consumedCount - q.deadLetterCount }}</span>
+          <span v-if="q.consumedCount > 0" class="badge-green">{{ q.consumedCount }}</span>
           <span v-if="q.deadLetterCount > 0" class="badge-red">{{ q.deadLetterCount }}</span>
         </span>
       </div>
@@ -131,6 +135,7 @@ function shortName(fullName: string) {
 .entity-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
 .entity-badges { display: flex; gap: 3px; flex-shrink: 0; }
 .badge { background: var(--blue); color: var(--bg-crust); border-radius: 8px; padding: 0 5px; font-size: 9px; }
+.badge-green { background: var(--green); color: var(--bg-crust); border-radius: 8px; padding: 0 5px; font-size: 9px; }
 .badge-red { background: var(--red); color: var(--bg-crust); border-radius: 8px; padding: 0 5px; font-size: 9px; }
 .badge-sm { background: var(--bg-surface); color: var(--text-dim); border-radius: 8px; padding: 0 4px; font-size: 9px; margin-left: 4px; }
 .sub-row { padding: 3px 4px 3px 40px; color: var(--text-dim); font-size: 10px; }

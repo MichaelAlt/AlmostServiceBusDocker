@@ -1,12 +1,16 @@
-import { ref } from 'vue'
+import { ref, onUnmounted } from 'vue'
 import type { MessageInfo, MessageEvent } from '../types'
+import type { NamespaceSse } from './useNamespaceSse'
 import { api } from '../api/client'
-import { connectSse } from '../api/sse'
 
-export function useMessages(ns: () => string, entity: () => string | null, entityType: () => 'queue' | 'topic' | null) {
+export function useMessages(
+  ns: () => string,
+  entity: () => string | null,
+  entityType: () => 'queue' | 'topic' | null,
+  sse: NamespaceSse,
+) {
   const messages = ref<MessageInfo[]>([])
-  const connected = ref(false)
-  let source: EventSource | null = null
+  let unsubscribe: (() => void) | null = null
 
   async function refresh() {
     const e = entity()
@@ -19,45 +23,53 @@ export function useMessages(ns: () => string, entity: () => string | null, entit
     } catch { /* ignore */ }
   }
 
-  function startSse() {
-    stopSse()
+  function handleEvent(evt: MessageEvent) {
     const e = entity()
-    if (!e) return
+    if (!e || evt.entity !== e) return
 
-    source = connectSse(ns(), e, (evt: MessageEvent) => {
-      if (evt.type === 'Enqueued') {
-        messages.value.unshift({
-          messageId: evt.messageId,
-          sequenceNumber: evt.sequenceNumber,
-          contentType: evt.contentType,
-          correlationId: null,
-          deliveryCount: 0,
-          enqueuedTimeUtc: evt.timestamp,
-          subject: null,
-          applicationProperties: null,
-          bodyText: evt.bodyPreview,
-          scalarProperties: evt.scalarProperties,
-          state: 'Active',
-        })
-        if (messages.value.length > 100) messages.value.pop()
-      } else if (evt.type === 'Completed') {
-        const msg = messages.value.find(m => m.messageId === evt.messageId)
-        if (msg) msg.state = 'Consumed'
-      } else if (evt.type === 'DeadLettered') {
-        const msg = messages.value.find(m => m.messageId === evt.messageId)
-        if (msg) msg.state = 'DeadLettered'
-      }
-    })
-
-    source.onopen = () => { connected.value = true }
-    source.onerror = () => { connected.value = false }
+    if (evt.type === 'Enqueued') {
+      messages.value.unshift({
+        messageId: evt.messageId,
+        sequenceNumber: evt.sequenceNumber,
+        contentType: evt.contentType,
+        correlationId: null,
+        deliveryCount: 0,
+        enqueuedTimeUtc: evt.timestamp,
+        subject: null,
+        applicationProperties: null,
+        bodyText: evt.bodyPreview,
+        scalarProperties: evt.scalarProperties,
+        state: 'Active',
+      })
+      if (messages.value.length > 200) messages.value.pop()
+    } else if (evt.type === 'Completed') {
+      const msg = messages.value.find(m => m.messageId === evt.messageId)
+      if (msg) msg.state = 'Consumed'
+    } else if (evt.type === 'DeadLettered') {
+      const msg = messages.value.find(m => m.messageId === evt.messageId)
+      if (msg) msg.state = 'DeadLettered'
+    }
   }
 
-  function stopSse() {
-    source?.close()
-    source = null
-    connected.value = false
+  function startListening() {
+    stopListening()
+    unsubscribe = sse.subscribe(handleEvent)
   }
 
-  return { messages, connected, refresh, startSse, stopSse }
+  function stopListening() {
+    unsubscribe?.()
+    unsubscribe = null
+  }
+
+  const deadLetterMessages = ref<MessageInfo[]>([])
+
+  async function refreshDeadLetter() {
+    const e = entity()
+    if (!e || entityType() !== 'queue') { deadLetterMessages.value = []; return }
+    try {
+      deadLetterMessages.value = await api.getDeadLetterMessages(ns(), e)
+    } catch { /* ignore */ }
+  }
+
+  return { messages, deadLetterMessages, connected: sse.connected, refresh, refreshDeadLetter, startListening, stopListening }
 }

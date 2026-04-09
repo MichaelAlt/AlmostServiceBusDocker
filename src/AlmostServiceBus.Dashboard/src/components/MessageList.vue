@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import { ref, watch, onUnmounted, computed } from 'vue'
+import { ref, inject, watch, onUnmounted, computed } from 'vue'
 import type { MessageInfo, SubscriptionInfo } from '../types'
 import MessageRow from './MessageRow.vue'
 import { useMessages } from '../composables/useMessages'
+import { sseKey } from '../composables/useNamespaceSse'
 import { api } from '../api/client'
 
 const props = defineProps<{
@@ -14,22 +15,16 @@ const props = defineProps<{
 const emit = defineEmits<{ selectQueue: [name: string] }>()
 const selectedMessage = defineModel<MessageInfo | null>('selectedMessage')
 
-const { messages, connected, refresh, startSse, stopSse } =
-  useMessages(() => props.namespace, () => props.entity, () => props.entityType)
+const sse = inject(sseKey)!
 
-watch(() => [props.namespace, props.entity], () => {
-  selectedMessage.value = null
-  if (props.entityType === 'queue') {
-    refresh()
-    startSse()
-    topicSubscriptions.value = []
-  } else if (props.entityType === 'topic') {
-    stopSse()
-    refreshSubscriptions()
-  }
-}, { immediate: true })
+const { messages, deadLetterMessages, connected, refresh, refreshDeadLetter, startListening, stopListening } =
+  useMessages(() => props.namespace, () => props.entity, () => props.entityType, sse)
 
-onUnmounted(stopSse)
+const activeTab = ref<'messages' | 'deadletter' | 'properties'>('messages')
+const hideConsumed = ref(false)
+const visibleMessages = computed(() =>
+  hideConsumed.value ? messages.value.filter(m => m.state !== 'Consumed' && m.state !== 'DeadLettered') : messages.value
+)
 
 // When viewing a topic, fetch its subscriptions
 const topicSubscriptions = ref<SubscriptionInfo[]>([])
@@ -42,6 +37,29 @@ async function refreshSubscriptions() {
     topicSubscriptions.value = topic?.subscriptions ?? []
   } catch { topicSubscriptions.value = [] }
 }
+
+function switchTab(tab: 'messages' | 'deadletter' | 'properties') {
+  activeTab.value = tab
+  selectedMessage.value = null
+  if (tab === 'deadletter') refreshDeadLetter()
+}
+
+watch(() => [props.namespace, props.entity, props.entityType], () => {
+  selectedMessage.value = null
+  activeTab.value = 'messages'
+  messages.value = []
+  deadLetterMessages.value = []
+  if (props.entityType === 'queue') {
+    refresh()
+    startListening()
+    topicSubscriptions.value = []
+  } else if (props.entityType === 'topic') {
+    stopListening()
+    refreshSubscriptions()
+  }
+}, { immediate: true })
+
+onUnmounted(stopListening)
 
 function shortName(name: string) {
   const idx = name.lastIndexOf('/')
@@ -67,26 +85,55 @@ function parentPath(name: string) {
     <!-- Queue view: messages -->
     <template v-if="entityType === 'queue'">
       <div class="tabs">
-        <div class="tab active">Messages</div>
-        <div class="tab">Dead Letter</div>
-        <div class="tab">Properties</div>
+        <div class="tab" :class="{ active: activeTab === 'messages' }" @click="switchTab('messages')">Messages</div>
+        <div class="tab" :class="{ active: activeTab === 'deadletter' }" @click="switchTab('deadletter')">Dead Letter</div>
+        <div class="tab" :class="{ active: activeTab === 'properties' }" @click="switchTab('properties')">Properties</div>
       </div>
 
-      <div class="live-indicator" :class="{ connected }">
-        {{ connected ? '\u25CF Live' : '\u25CB Disconnected' }}
-      </div>
-
-      <div class="rows">
-        <MessageRow
-          v-for="msg in messages" :key="msg.messageId"
-          :message="msg"
-          :selected="selectedMessage?.messageId === msg.messageId"
-          @select="selectedMessage = msg"
-        />
-        <div v-if="messages.length === 0" class="empty">
-          No messages
+      <!-- Messages tab -->
+      <template v-if="activeTab === 'messages'">
+        <div class="list-toolbar">
+          <span class="live-indicator" :class="{ connected }">
+            {{ connected ? '\u25CF Live' : '\u25CB Disconnected' }}
+          </span>
+          <label class="toggle">
+            <input type="checkbox" v-model="hideConsumed" />
+            <span>Hide consumed</span>
+          </label>
         </div>
-      </div>
+
+        <div class="rows">
+          <MessageRow
+            v-for="msg in visibleMessages" :key="msg.messageId"
+            :message="msg"
+            :selected="selectedMessage?.messageId === msg.messageId"
+            @select="selectedMessage = msg"
+          />
+          <div v-if="visibleMessages.length === 0" class="empty">
+            No messages
+          </div>
+        </div>
+      </template>
+
+      <!-- Dead Letter tab -->
+      <template v-if="activeTab === 'deadletter'">
+        <div class="rows">
+          <MessageRow
+            v-for="msg in deadLetterMessages" :key="msg.messageId"
+            :message="msg"
+            :selected="selectedMessage?.messageId === msg.messageId"
+            @select="selectedMessage = msg"
+          />
+          <div v-if="deadLetterMessages.length === 0" class="empty">
+            No dead-letter messages
+          </div>
+        </div>
+      </template>
+
+      <!-- Properties tab (placeholder) -->
+      <template v-if="activeTab === 'properties'">
+        <div class="empty">Queue properties not yet implemented</div>
+      </template>
     </template>
 
     <!-- Topic view: subscriptions -->
@@ -131,8 +178,11 @@ function parentPath(name: string) {
 .tabs { display: flex; border-bottom: 1px solid var(--border); background: var(--bg-mantle); }
 .tab { padding: 6px 12px; color: var(--text-muted); font-size: 10px; cursor: pointer; }
 .tab.active { border-bottom: 2px solid var(--blue); color: var(--blue); font-weight: 600; }
-.live-indicator { padding: 4px 12px; background: var(--bg-mantle); border-bottom: 1px solid var(--border-subtle); font-size: 10px; color: var(--text-muted); }
+.list-toolbar { display: flex; align-items: center; justify-content: space-between; padding: 4px 12px; background: var(--bg-mantle); border-bottom: 1px solid var(--border-subtle); }
+.live-indicator { font-size: 10px; color: var(--text-muted); }
 .live-indicator.connected { color: var(--green); }
+.toggle { display: flex; align-items: center; gap: 5px; font-size: 10px; color: var(--text-muted); cursor: pointer; user-select: none; }
+.toggle input { accent-color: var(--blue); width: 12px; height: 12px; }
 .rows { flex: 1; overflow-y: auto; }
 .empty { padding: 20px; text-align: center; color: var(--text-muted); }
 
