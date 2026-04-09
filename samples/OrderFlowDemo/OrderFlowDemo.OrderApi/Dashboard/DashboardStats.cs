@@ -30,23 +30,20 @@ public class DashboardStats
 
         // Track totals
         if (evt.FromState is null)
-        {
             Interlocked.Increment(ref Total);
-            if (evt.Warehouse is not null)
-                _warehouseDepths.AddOrUpdate(evt.Warehouse, 1, (_, v) => v + 1);
-        }
 
         if (TerminalStates.Contains(toState))
-        {
             Interlocked.Increment(ref Completed);
-            if (evt.Warehouse is not null)
-                _warehouseDepths.AddOrUpdate(evt.Warehouse, 0, (_, v) => Math.Max(0, v - 1));
-        }
 
         if (FailureStates.Contains(toState))
-        {
             Interlocked.Increment(ref Failed);
-            if (evt.Warehouse is not null)
+
+        // Warehouse depths — enters at Picking, leaves at Shipping or failure
+        if (evt.Warehouse is not null)
+        {
+            if (toState == "Picking")
+                _warehouseDepths.AddOrUpdate(evt.Warehouse, 1, (_, v) => v + 1);
+            else if (toState == "Shipping" || FailureStates.Contains(toState))
                 _warehouseDepths.AddOrUpdate(evt.Warehouse, 0, (_, v) => Math.Max(0, v - 1));
         }
     }

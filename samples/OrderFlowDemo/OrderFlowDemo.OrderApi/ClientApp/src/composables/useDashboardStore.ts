@@ -53,14 +53,15 @@ export function useDashboardStore() {
       state.failedOrders++
     }
 
-    // Warehouse depths (count non-terminal per warehouse)
+    // Warehouse depths — order enters warehouse at Picking, leaves at Shipping
     if (event.warehouse) {
-      if (TERMINAL_STATES.includes(toState) || FAILURE_STATES.includes(toState)) {
+      if (toState === 'Picking') {
+        state.warehouseDepths[event.warehouse] = (state.warehouseDepths[event.warehouse] || 0) + 1
+      } else if (toState === 'Shipping' || FAILURE_STATES.includes(toState)) {
         state.warehouseDepths[event.warehouse] = Math.max(
           0, (state.warehouseDepths[event.warehouse] || 0) - 1)
-      } else if (!event.fromState) {
-        state.warehouseDepths[event.warehouse] = (state.warehouseDepths[event.warehouse] || 0) + 1
       }
+      console.debug('[warehouse]', event.warehouse, toState, '→', state.warehouseDepths[event.warehouse])
     }
 
     // Feed

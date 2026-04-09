@@ -32,6 +32,7 @@ builder.Services.AddMassTransit(x =>
     x.UsingAzureServiceBus((context, cfg) =>
     {
         cfg.Host(builder.Configuration.GetConnectionString("servicebus"));
+        cfg.UseMessageRetry(r => r.Interval(3, TimeSpan.FromSeconds(1)));
         cfg.ConnectConsumeObserver(context.GetRequiredService<SagaObserver>());
         cfg.ConfigureEndpoints(context);
     });

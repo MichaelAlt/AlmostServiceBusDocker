@@ -2,9 +2,9 @@
 import { ref, onMounted } from 'vue'
 
 interface Scenario {
-  Name: string
-  Description: string
-  OrdersPerSecond: number
+  name: string
+  description: string
+  ordersPerSecond: number
 }
 
 const scenarios = ref<Scenario[]>([])
@@ -38,13 +38,13 @@ async function stopScenario() {
   <div class="scenario-bar">
     <button
       v-for="s in scenarios"
-      :key="s.Name"
+      :key="s.name"
       class="scenario-pill"
-      :class="{ active: activeScenario === s.Name }"
-      :title="s.Description"
-      @click="startScenario(s.Name)"
+      :class="{ active: activeScenario === s.name }"
+      :title="s.description"
+      @click="startScenario(s.name)"
     >
-      {{ s.Name }}
+      {{ s.name }}
     </button>
     <button
       v-if="activeScenario"
