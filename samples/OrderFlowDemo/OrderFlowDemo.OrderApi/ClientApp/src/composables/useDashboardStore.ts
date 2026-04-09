@@ -61,7 +61,6 @@ export function useDashboardStore() {
         state.warehouseDepths[event.warehouse] = Math.max(
           0, (state.warehouseDepths[event.warehouse] || 0) - 1)
       }
-      console.debug('[warehouse]', event.warehouse, toState, '→', state.warehouseDepths[event.warehouse])
     }
 
     // Feed

@@ -27,7 +27,17 @@ try {
         Start-Sleep -Milliseconds 500
     }
 } finally {
-    if (-not $orderApi.HasExited) { Stop-Process -Id $orderApi.Id -Force -ErrorAction SilentlyContinue }
-    if (-not $worker.HasExited) { Stop-Process -Id $worker.Id -Force -ErrorAction SilentlyContinue }
+    # Send Ctrl+C (graceful) via taskkill, then wait briefly before forcing
+    foreach ($proc in @($orderApi, $worker)) {
+        if (-not $proc.HasExited) {
+            taskkill /PID $proc.Id >$null 2>&1
+        }
+    }
+    Start-Sleep -Seconds 3
+    foreach ($proc in @($orderApi, $worker)) {
+        if (-not $proc.HasExited) {
+            Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue
+        }
+    }
     Write-Host "Stopped." -ForegroundColor Yellow
 }
