@@ -15,7 +15,7 @@ Unlike Microsoft's official emulator (which requires Docker with a SQL Server co
 ## Features
 
 - **No infrastructure dependencies** — no Docker, no SQL Server, no port conflicts
-- **Namespace isolation** — each test fixture gets a unique namespace via `SharedAccessKeyName`, enabling safe parallel execution
+- **Namespace isolation** —  `SharedAccessKeyName` can be passed an arbitrary value which will create an isolated namespace. Great for parallel testing!
 - **Full AMQP 1.0 protocol** via AMQPNetLite — no HTTP polling or fakes
 - **Queues** with PeekLock, dead-lettering, duplicate detection, and max delivery count
 - **Topics & Subscriptions** with SQL and correlation filters, forwarding, fan-out
