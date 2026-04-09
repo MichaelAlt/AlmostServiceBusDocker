@@ -1,0 +1,14 @@
+<Project>
+  <!-- Copy the embedded Host binaries to the consuming project's output directory
+       so that the Aspire extension can find them at runtime. -->
+  <PropertyGroup>
+    <_AlmostServiceBusToolsDir>$(MSBuildThisFileDirectory)..\tools\</_AlmostServiceBusToolsDir>
+  </PropertyGroup>
+
+  <ItemGroup Condition="Exists('$(_AlmostServiceBusToolsDir)AlmostServiceBus.Host.dll')">
+    <None Include="$(_AlmostServiceBusToolsDir)**\*"
+          CopyToOutputDirectory="PreserveNewest"
+          Link="almostservicebus-host\%(RecursiveDir)%(Filename)%(Extension)"
+          Visible="false" />
+  </ItemGroup>
+</Project>

@@ -19,20 +19,27 @@
                       Private="false" />
   </ItemGroup>
 
-  <!-- Publish the Host project into obj/host-publish/ before build/pack -->
-  <Target Name="PublishHost" BeforeTargets="Build;Pack">
+  <!-- .targets file that copies tools/ to consuming project's output -->
+  <ItemGroup>
+    <None Include="buildTransitive\**\*"
+          Pack="true"
+          PackagePath="buildTransitive/"
+          Visible="false" />
+  </ItemGroup>
+
+  <!-- Publish the Host project, then include its output in the NuGet package.
+       The Content glob must be inside a target so it runs AFTER publish populates the directory. -->
+  <Target Name="PublishHostAndInclude" BeforeTargets="Build;GenerateNuspec">
     <MSBuild Projects="..\AlmostServiceBus.Host\AlmostServiceBus.Host.csproj"
              Targets="Publish"
              Properties="PublishDir=$(HostPublishDir);Configuration=$(Configuration);PublishTrimmed=false;SelfContained=false" />
+    <ItemGroup>
+      <Content Include="$(HostPublishDir)**\*"
+               Pack="true"
+               PackagePath="tools/"
+               CopyToOutputDirectory="Never"
+               Visible="false" />
+    </ItemGroup>
   </Target>
-
-  <!-- Include published Host output as NuGet package content under tools/ -->
-  <ItemGroup>
-    <Content Include="$(HostPublishDir)**\*"
-             Pack="true"
-             PackagePath="tools/"
-             CopyToOutputDirectory="Never"
-             Visible="false" />
-  </ItemGroup>
 
 </Project>

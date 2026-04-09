@@ -47,7 +47,7 @@ export interface MessageInfo {
 }
 
 export interface MessageEvent {
-  type: 'Enqueued' | 'Completed' | 'DeadLettered' | 'Abandoned'
+  type: 'Enqueued' | 'Completed' | 'DeadLettered' | 'Abandoned' | 'NamespaceCreated'
   namespace: string
   entity: string
   messageId: string

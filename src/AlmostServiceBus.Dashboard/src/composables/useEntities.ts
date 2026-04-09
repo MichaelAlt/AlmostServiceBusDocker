@@ -28,6 +28,12 @@ export function useEntities(selectedNamespace: () => string, sse: NamespaceSse) 
 
   // Apply SSE event deltas to local entity counts for real-time updates.
   function handleEvent(evt: MessageEvent) {
+    // New namespace — refresh the namespace list immediately
+    if (evt.type === 'NamespaceCreated') {
+      refreshNamespaces()
+      return
+    }
+
     if (!entities.value) return
 
     const queue = entities.value.queues.find(q => q.name === evt.entity)
@@ -62,21 +68,16 @@ export function useEntities(selectedNamespace: () => string, sse: NamespaceSse) 
   }
 
   let unsubscribe: (() => void) | null = null
-  let nsInterval: ReturnType<typeof setInterval> | null = null
 
   function start() {
     refreshNamespaces()
     refreshEntities()
     unsubscribe = sse.subscribe(handleEvent)
-    // Namespaces can appear from other connections outside our SSE stream,
-    // so poll them infrequently.
-    nsInterval = setInterval(refreshNamespaces, 30000)
   }
 
   function stop() {
     unsubscribe?.()
     unsubscribe = null
-    if (nsInterval) { clearInterval(nsInterval); nsInterval = null }
   }
 
   function onNamespaceChange() {

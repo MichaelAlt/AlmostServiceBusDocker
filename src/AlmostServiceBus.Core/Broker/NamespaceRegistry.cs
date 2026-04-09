@@ -22,8 +22,22 @@ public sealed class NamespaceRegistry
     /// Returns the <see cref="NamespaceContext"/> for the given namespace name,
     /// creating one if it does not yet exist.
     /// </summary>
-    public NamespaceContext GetOrCreate(string namespaceName) =>
-        _namespaces.GetOrAdd(namespaceName, n => new NamespaceContext(n, _eventBus));
+    public NamespaceContext GetOrCreate(string namespaceName)
+    {
+        var isNew = false;
+        var ctx = _namespaces.GetOrAdd(namespaceName, n =>
+        {
+            isNew = true;
+            return new NamespaceContext(n, _eventBus);
+        });
+        if (isNew)
+        {
+            _eventBus?.Publish(new MessageEvent(
+                MessageEventType.NamespaceCreated, namespaceName, "",
+                "", 0, null, null, null, DateTimeOffset.UtcNow));
+        }
+        return ctx;
+    }
 
     /// <summary>
     /// Returns the <see cref="NamespaceContext"/> for the given namespace name,

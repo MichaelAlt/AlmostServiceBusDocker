@@ -7,7 +7,8 @@ public enum MessageEventType
     Enqueued,
     Completed,
     DeadLettered,
-    Abandoned
+    Abandoned,
+    NamespaceCreated
 }
 
 public record MessageEvent(

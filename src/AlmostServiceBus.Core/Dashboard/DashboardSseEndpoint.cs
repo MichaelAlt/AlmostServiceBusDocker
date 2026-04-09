@@ -36,10 +36,14 @@ public static class DashboardSseEndpoint
             {
                 await foreach (var evt in reader.ReadAllAsync(ct))
                 {
-                    if (ns is not null && !evt.Namespace.Equals(ns, StringComparison.OrdinalIgnoreCase))
-                        continue;
-                    if (entity is not null && !evt.Entity.Equals(entity, StringComparison.OrdinalIgnoreCase))
-                        continue;
+                    // NamespaceCreated events bypass filters — all clients need to know
+                    if (evt.Type != MessageEventType.NamespaceCreated)
+                    {
+                        if (ns is not null && !evt.Namespace.Equals(ns, StringComparison.OrdinalIgnoreCase))
+                            continue;
+                        if (entity is not null && !evt.Entity.Equals(entity, StringComparison.OrdinalIgnoreCase))
+                            continue;
+                    }
 
                     var json = JsonSerializer.Serialize(evt, JsonOptions);
 
