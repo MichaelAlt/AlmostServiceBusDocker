@@ -12,6 +12,8 @@ builder.Services.AddMassTransit(x =>
     x.AddConsumer<ShipOrderConsumer>();
     x.AddConsumer<OrderShippedConsumer>();
 
+    x.AddInMemoryInboxOutbox();
+
     x.UsingAzureServiceBus((context, cfg) =>
     {
         cfg.Host(builder.Configuration.GetConnectionString("servicebus"));

@@ -29,6 +29,8 @@ builder.Services.AddMassTransit(x =>
     x.AddSagaStateMachine<OrderStateMachine, OrderState>()
         .InMemoryRepository();
 
+    x.AddInMemoryInboxOutbox();
+
     x.UsingAzureServiceBus((context, cfg) =>
     {
         cfg.Host(builder.Configuration.GetConnectionString("servicebus"));

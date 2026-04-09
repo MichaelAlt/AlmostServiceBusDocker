@@ -184,6 +184,31 @@ public sealed class QueueEntity : IDisposable
     }
 
     /// <summary>
+    /// Re-enqueues a message that was previously dequeued (lock expiry or abandon).
+    /// Unlike <see cref="Enqueue"/>, this does NOT fire an SSE event because the message
+    /// is not new — it is returning to the queue. Firing Enqueued here would cause the
+    /// dashboard's local SSE-driven counters to drift upward on every redelivery cycle.
+    /// </summary>
+    private void ReEnqueue(BrokeredMessage message)
+    {
+        message.LockToken ??= Guid.NewGuid().ToString();
+        if (message.SequenceNumber == 0)
+            message.SequenceNumber = Interlocked.Increment(ref _sequenceNumber);
+
+        if (RequiresSession)
+        {
+            Sessions!.Enqueue(message);
+            _allMessages[message.LockToken!] = message;
+            Interlocked.Increment(ref _messageCount);
+            return;
+        }
+
+        _channel.Writer.TryWrite(message);
+        _allMessages[message.LockToken!] = message;
+        Interlocked.Increment(ref _messageCount);
+    }
+
+    /// <summary>
     /// Removes expired entries from the duplicate detection history.
     /// </summary>
     private void PurgeExpiredDuplicateEntries()
@@ -290,7 +315,7 @@ public sealed class QueueEntity : IDisposable
         }
         else
         {
-            // Remove old _allMessages entry — Enqueue will create a new one with fresh lock token.
+            // Remove old _allMessages entry — ReEnqueue will create a new one with fresh lock token.
             _allMessages.TryRemove(lockToken, out _);
             // Assign a fresh lock token so the re-delivered message gets a unique AMQP
             // delivery tag. The Azure SDK tracks pending disposition operations by lock
@@ -298,7 +323,7 @@ public sealed class QueueEntity : IDisposable
             // "A pending operation with the same identifier already exists" when the
             // client tries to settle the re-delivered message.
             message.LockToken = null;
-            Enqueue(message);
+            ReEnqueue(message);
         }
     }
 
@@ -354,7 +379,7 @@ public sealed class QueueEntity : IDisposable
     /// </summary>
     private void ReEnqueueExpired(string oldLockToken, BrokeredMessage message)
     {
-        // Remove old dashboard entry — Enqueue will create a new one with fresh lock token.
+        // Remove old dashboard entry — ReEnqueue will create a new one with fresh lock token.
         _allMessages.TryRemove(oldLockToken, out _);
 
         if (message.DeliveryCount >= MaxDeliveryCount)
@@ -365,7 +390,7 @@ public sealed class QueueEntity : IDisposable
         else
         {
             message.LockToken = null;
-            Enqueue(message);
+            ReEnqueue(message);
         }
     }
 
