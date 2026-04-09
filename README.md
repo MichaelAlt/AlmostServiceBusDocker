@@ -139,7 +139,6 @@ Additional ports bound automatically:
 ## Known Limitations
 
 - **AMQP Transactions** — `Coordinator` links are gracefully rejected (`amqp:not-implemented`). NServiceBus defaults to transactions; use `TransportTransactionMode.ReceiveOnly` as workaround.
-- **Lock renewal** — Server-side logic works but entity-scoped management link responses for lock renewal may have framing issues under certain conditions.
 - **Wolverine tracking** — `tracking_correlation_id_on_everything` compliance tests time out. Standalone tests confirm correct AMQP behavior; the timeout is caused by Wolverine's internal handler pipeline, not the emulator. See `tests/ms-emulator-comparison/` for a harness to verify against Microsoft's official emulator.
 
 ## Development
