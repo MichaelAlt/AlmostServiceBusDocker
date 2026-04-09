@@ -11,6 +11,12 @@ namespace AlmostServiceBus.Core.Broker;
 public sealed class QueueEntity : IDisposable
 {
     private readonly Channel<BrokeredMessage> _channel;
+    /// <summary>
+    /// Priority channel for re-enqueued messages (abandon / lock expiry).
+    /// Real ASB re-delivers abandoned messages before newly published ones;
+    /// draining this channel first in <see cref="TryDequeueImmediate"/> matches that behavior.
+    /// </summary>
+    private readonly Channel<BrokeredMessage> _redeliveryChannel;
     private readonly ConcurrentDictionary<string, BrokeredMessage> _pending = new();
     private readonly ConcurrentDictionary<string, BrokeredMessage> _allMessages = new();
     private readonly ConcurrentDictionary<string, DateTimeOffset> _recentMessageIds = new();
@@ -30,6 +36,12 @@ public sealed class QueueEntity : IDisposable
         _isDeadLetterQueue = isDeadLetterQueue;
 
         _channel = Channel.CreateUnbounded<BrokeredMessage>(new UnboundedChannelOptions
+        {
+            SingleWriter = false,
+            SingleReader = false
+        });
+
+        _redeliveryChannel = Channel.CreateUnbounded<BrokeredMessage>(new UnboundedChannelOptions
         {
             SingleWriter = false,
             SingleReader = false
@@ -188,6 +200,8 @@ public sealed class QueueEntity : IDisposable
     /// Unlike <see cref="Enqueue"/>, this does NOT fire an SSE event because the message
     /// is not new — it is returning to the queue. Firing Enqueued here would cause the
     /// dashboard's local SSE-driven counters to drift upward on every redelivery cycle.
+    /// Writes to <see cref="_redeliveryChannel"/> so that re-enqueued messages are
+    /// delivered before newly published ones, matching real ASB behavior.
     /// </summary>
     private void ReEnqueue(BrokeredMessage message)
     {
@@ -203,7 +217,7 @@ public sealed class QueueEntity : IDisposable
             return;
         }
 
-        _channel.Writer.TryWrite(message);
+        _redeliveryChannel.Writer.TryWrite(message);
         _allMessages[message.LockToken!] = message;
         Interlocked.Increment(ref _messageCount);
     }
@@ -223,11 +237,21 @@ public sealed class QueueEntity : IDisposable
 
     /// <summary>
     /// Asynchronously dequeues the next message, incrementing its delivery count
-    /// and tracking it in the pending dictionary.
+    /// and tracking it in the pending dictionary. Redeliveries take priority.
     /// </summary>
     public async ValueTask<BrokeredMessage> DequeueAsync(CancellationToken cancellationToken = default)
     {
-        var message = await _channel.Reader.ReadAsync(cancellationToken).ConfigureAwait(false);
+        // Check redelivery channel first (priority), then normal channel
+        if (_redeliveryChannel.Reader.TryRead(out var message))
+        {
+            // got a redelivery synchronously
+        }
+        else
+        {
+            await WaitToReadAsync(cancellationToken).ConfigureAwait(false);
+            if (!_redeliveryChannel.Reader.TryRead(out message))
+                message = await _channel.Reader.ReadAsync(cancellationToken).ConfigureAwait(false);
+        }
         Interlocked.Decrement(ref _messageCount);
         message.DeliveryCount++;
         message.LockedUntil = DateTimeOffset.UtcNow.Add(LockDuration);
@@ -237,10 +261,12 @@ public sealed class QueueEntity : IDisposable
 
     /// <summary>
     /// Non-blocking attempt to dequeue the next message. Returns null if nothing is available.
+    /// Re-enqueued messages (abandon / lock expiry) are delivered before newly published ones,
+    /// matching real Azure Service Bus behavior.
     /// </summary>
     public BrokeredMessage? TryDequeueImmediate()
     {
-        if (_channel.Reader.TryRead(out var message))
+        if (_redeliveryChannel.Reader.TryRead(out var message) || _channel.Reader.TryRead(out message))
         {
             Interlocked.Decrement(ref _messageCount);
             message.DeliveryCount++;
@@ -253,11 +279,16 @@ public sealed class QueueEntity : IDisposable
     }
 
     /// <summary>
-    /// Waits asynchronously until a message is available in the queue channel.
-    /// Used by the message pump to avoid busy-polling when the queue is empty.
+    /// Waits asynchronously until a message is available in either the redelivery
+    /// or normal channel. Used by the message pump to avoid busy-polling.
     /// </summary>
-    public ValueTask<bool> WaitToReadAsync(CancellationToken ct = default) =>
-        _channel.Reader.WaitToReadAsync(ct);
+    public async ValueTask<bool> WaitToReadAsync(CancellationToken ct = default)
+    {
+        var redelivery = _redeliveryChannel.Reader.WaitToReadAsync(ct).AsTask();
+        var normal = _channel.Reader.WaitToReadAsync(ct).AsTask();
+        await Task.WhenAny(redelivery, normal);
+        return !ct.IsCancellationRequested;
+    }
 
     /// <summary>
     /// Adds a message to the pending (locked) dictionary by its lock token.
