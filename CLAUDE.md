@@ -70,7 +70,6 @@ Azure SDK's `ServiceBusMessageBatch` sends messages as a single AMQP transfer wh
 ## Known Gaps
 
 - **AMQP Transactions** — `Coordinator` links are gracefully rejected (`amqp:not-implemented`). NServiceBus defaults to transactions; use `TransportTransactionMode.ReceiveOnly` as workaround.
-- **Lock renewal response** — server-side works but entity-scoped management link responses for lock renewal may have framing issues under certain conditions
 - **Wolverine tracking** — `tracking_correlation_id_on_everything` compliance tests time out. Standalone tests confirm correct AMQP behavior; the timeout is in Wolverine's handler pipeline. See `tests/ms-emulator-comparison/` to verify against Microsoft's official emulator.
 
 ## Running
