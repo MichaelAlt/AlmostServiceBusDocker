@@ -89,7 +89,7 @@ public static class AlmostServiceBusBuilderExtensions
 
         var resourceBuilder = builder.AddResource(resource)
             .WithArgs(args.ToArray())
-            .WithEndpoint(port, name: "servicebus", scheme: "tcp", isProxied: false)
+            .WithEndpoint(port ?? 5672, port ?? 5672, name: "servicebus", scheme: "tcp", isProxied: false)
             .WithEndpoint(dashboardPort, dashboardPort, name: "dashboard", scheme: "http", isProxied: false)
             .WithExternalHttpEndpoints();
 

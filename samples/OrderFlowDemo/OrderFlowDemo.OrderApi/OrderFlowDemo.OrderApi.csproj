@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+  <PropertyGroup>
+    <DashboardDir>$(MSBuildThisFileDirectory)ClientApp</DashboardDir>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\OrderFlowDemo.Contracts\OrderFlowDemo.Contracts.csproj" />
+    <ProjectReference Include="..\OrderFlowDemo.ServiceDefaults\OrderFlowDemo.ServiceDefaults.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="MassTransit.Azure.ServiceBus.Core" Version="8.4.0" />
+    <PackageReference Include="Vite.AspNetCore" Version="2.4.1" />
+  </ItemGroup>
+  <Target Name="BuildDashboard" BeforeTargets="Build"
+          Condition="('$(Configuration)' == 'Release' OR !Exists('$(MSBuildThisFileDirectory)wwwroot/index.html')) AND Exists('$(DashboardDir)/package.json')">
+    <Exec Command="npm ci --prefix $(DashboardDir)" />
+    <Exec Command="npm run build --prefix $(DashboardDir)" />
+  </Target>
+</Project>
