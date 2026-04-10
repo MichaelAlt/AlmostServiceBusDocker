@@ -3,19 +3,17 @@
 
 # AlmostServiceBus
 
-
-
 A local Azure Service Bus emulator compatible with the official Azure SDK (`Azure.Messaging.ServiceBus`), MassTransit, Wolverine, and NServiceBus.
 
-Unlike Microsoft's official emulator (which requires Docker with a SQL Server container and supports only sequential testing), AlmostServiceBus is flexible about how you run it:
+AlmostServiceBus is flexible in how you run it:
 
 - **Embedded in your test suite** — runs in-process with per-test namespace isolation, so your integration tests run in parallel without interfering with each other
-- **Standalone for local dev** — run as a long-lived process or via Aspire, and point your app at it just like the real thing
+- **Standalone for local dev** — run as a dotnet tool or via Aspire, and point your app at it, just like the real thing
 
 ## Features
 
 - **No infrastructure dependencies** — no Docker, no SQL Server, no port conflicts
-- **Namespace isolation** —  `SharedAccessKeyName` can be passed an arbitrary value which will create an isolated namespace. Great for parallel testing!
+- **Namespace isolation** —  `SharedAccessKeyName` can be passed an arbitrary value which will create an isolated namespace.
 - **Full AMQP 1.0 protocol** via AMQPNetLite — no HTTP polling or fakes
 - **Queues** with PeekLock, dead-lettering, duplicate detection, and max delivery count
 - **Topics & Subscriptions** with SQL and correlation filters, forwarding, fan-out
@@ -25,6 +23,7 @@ Unlike Microsoft's official emulator (which requires Docker with a SQL Server co
 - **Management API** — Atom XML REST API for queue/topic/subscription CRUD
 - **TLS termination** — single port serves AMQPS, HTTPS, and plain AMQP/HTTP
 - **Vue diagnostic dashboard** on port 15672
+
 
 ## Installation
 
@@ -51,15 +50,13 @@ dotnet add package AlmostServiceBus.Aspire.Hosting
 ```bash
 # If installed as a global tool:
 almost-servicebus
-
-# Or from source:
-dotnet run --project src/AlmostServiceBus.Host
 ```
 
 Connection string:
 ```
-Endpoint=sb://localhost:5672;SharedAccessKeyName=RootManageSharedAccessKey;SharedAccessKey=emulator
+Endpoint=sb://localhost:5672;SharedAccessKeyName=<my-namespace>;SharedAccessKey=emulator
 ```
+*Note: using "RootManageSharedAccessKey" as the SharedAccessKeyName will map to the 'default' namespace.*
 
 ### Integration tests (in-process)
 
@@ -89,6 +86,22 @@ Add `AlmostServiceBus.Aspire.Hosting` to your Aspire host project:
 var builder = DistributedApplication.CreateBuilder(args);
 var serviceBus = builder.AddServiceBusEmulator("servicebus");
 ```
+
+## When to Use (and When Not To)
+
+**Good fit:**
+- **Integration tests** — per-test namespace isolation means your tests run in parallel without interfering. No Docker, no SQL Server, sub-second startup.
+- **Local development** — `almost-servicebus` and go. Point your app at `localhost:5672` and iterate without an Azure subscription.
+- **CI pipelines** — no Docker-in-Docker, no container orchestration. Just `dotnet tool install` and run.
+- **Aspire apps** — drop-in `AddServiceBusEmulator()` resource, works like the real thing.
+
+**Not a good fit:**
+- **AMQP transactions** — Coordinator links are rejected. NServiceBus users need `TransportTransactionMode.ReceiveOnly`.
+- **Performance/load testing** — this is an in-memory emulator, not a distributed broker. Backpressure and throughput characteristics don't match real ASB.
+- **Production** — this should go without saying, but: don't.
+
+**Framework coverage:** MassTransit has the deepest testing (runs against MassTransit's own ASB test suite). Wolverine and NServiceBus have conformance-level coverage. Contributions for additional framework tests, fixes, and new framework support are welcome.
+
 
 ## Architecture
 
