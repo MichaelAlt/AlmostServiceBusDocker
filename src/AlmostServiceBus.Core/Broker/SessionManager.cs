@@ -14,16 +14,74 @@ public class SessionState
     private readonly object _lock = new();
     private int _messageCount;
 
+    // Lock state is private — mutations only through TryLock/Unlock/RenewLock,
+    // which must be called under SessionManager._acceptLock.
+    private string? _lockedBy;
+    private long _lockedUntilTicks;
+
     public string SessionId { get; }
-    public string? LockedBy { get; set; }
-    public DateTimeOffset LockedUntil { get; set; }
     public byte[]? UserState { get; set; }
 
     public int MessageCount => _messageCount;
 
+    /// <summary>Current lock holder, or null if unlocked. Read-only outside SessionManager.</summary>
+    public string? LockedBy => _lockedBy;
+
+    /// <summary>UTC expiry of the current lock. Read-only outside SessionManager.</summary>
+    public DateTimeOffset LockedUntil
+    {
+        get
+        {
+            var ticks = Interlocked.Read(ref _lockedUntilTicks);
+            return ticks == 0 ? default : new DateTimeOffset(ticks, TimeSpan.Zero);
+        }
+    }
+
+    public bool IsLocked => _lockedBy is not null && DateTimeOffset.UtcNow < LockedUntil;
+
     public SessionState(string sessionId)
     {
         SessionId = sessionId;
+    }
+
+    /// <summary>
+    /// Attempts to acquire the session lock for the given receiver.
+    /// Must be called under <see cref="SessionManager._acceptLock"/>.
+    /// Returns true if the lock was acquired (session was unlocked).
+    /// </summary>
+    internal bool TryLock(string receiverId, TimeSpan duration)
+    {
+        if (IsLocked)
+            return false;
+
+        _lockedBy = receiverId;
+        Interlocked.Exchange(ref _lockedUntilTicks, DateTimeOffset.UtcNow.Add(duration).UtcTicks);
+        return true;
+    }
+
+    /// <summary>
+    /// Releases the session lock.
+    /// Must be called under <see cref="SessionManager._acceptLock"/>.
+    /// </summary>
+    internal void Unlock()
+    {
+        _lockedBy = null;
+        Interlocked.Exchange(ref _lockedUntilTicks, 0);
+    }
+
+    /// <summary>
+    /// Extends the session lock by the given duration from now.
+    /// Must be called under <see cref="SessionManager._acceptLock"/>.
+    /// Returns the new expiry, or null if the session is not locked.
+    /// </summary>
+    internal DateTimeOffset? RenewLock(TimeSpan duration)
+    {
+        if (!IsLocked)
+            return null;
+
+        var newExpiry = DateTimeOffset.UtcNow.Add(duration);
+        Interlocked.Exchange(ref _lockedUntilTicks, newExpiry.UtcTicks);
+        return newExpiry;
     }
 
     /// <summary>
@@ -65,14 +123,13 @@ public class SessionState
     /// Asynchronously waits until at least one message is available.
     /// </summary>
     public Task WaitToReadAsync(CancellationToken ct) => _signal.WaitAsync(ct);
-
-    public bool IsLocked => LockedBy is not null && DateTimeOffset.UtcNow < LockedUntil;
 }
 
 public class SessionManager
 {
     private readonly ConcurrentDictionary<string, SessionState> _sessions = new(StringComparer.OrdinalIgnoreCase);
     private readonly TimeSpan _lockDuration;
+    private readonly Lock _acceptLock = new();
 
     public SessionManager(TimeSpan lockDuration)
     {
@@ -99,29 +156,24 @@ public class SessionManager
     /// </summary>
     public SessionState? TryAcceptSession(string? sessionId, string receiverId)
     {
-        if (sessionId is not null)
+        lock (_acceptLock)
         {
-            if (_sessions.TryGetValue(sessionId, out var specific) && !specific.IsLocked)
+            if (sessionId is not null)
             {
-                specific.LockedBy = receiverId;
-                specific.LockedUntil = DateTimeOffset.UtcNow.Add(_lockDuration);
-                return specific;
+                if (_sessions.TryGetValue(sessionId, out var specific) && specific.TryLock(receiverId, _lockDuration))
+                    return specific;
+                return null;
             }
+
+            // Next available: find an unlocked session with messages
+            foreach (var session in _sessions.Values)
+            {
+                if (session.MessageCount > 0 && session.TryLock(receiverId, _lockDuration))
+                    return session;
+            }
+
             return null;
         }
-
-        // Next available: find an unlocked session with messages
-        foreach (var session in _sessions.Values)
-        {
-            if (!session.IsLocked && session.MessageCount > 0)
-            {
-                session.LockedBy = receiverId;
-                session.LockedUntil = DateTimeOffset.UtcNow.Add(_lockDuration);
-                return session;
-            }
-        }
-
-        return null;
     }
 
     /// <summary>
@@ -129,10 +181,10 @@ public class SessionManager
     /// </summary>
     public void ReleaseSession(string sessionId)
     {
-        if (_sessions.TryGetValue(sessionId, out var session))
+        lock (_acceptLock)
         {
-            session.LockedBy = null;
-            session.LockedUntil = default;
+            if (_sessions.TryGetValue(sessionId, out var session))
+                session.Unlock();
         }
     }
 
@@ -141,11 +193,13 @@ public class SessionManager
     /// </summary>
     public DateTimeOffset? RenewSessionLock(string sessionId)
     {
-        if (!_sessions.TryGetValue(sessionId, out var session) || !session.IsLocked)
-            return null;
+        lock (_acceptLock)
+        {
+            if (!_sessions.TryGetValue(sessionId, out var session))
+                return null;
 
-        session.LockedUntil = DateTimeOffset.UtcNow.Add(_lockDuration);
-        return session.LockedUntil;
+            return session.RenewLock(_lockDuration);
+        }
     }
 
     public byte[]? GetSessionState(string sessionId)
@@ -161,17 +215,26 @@ public class SessionManager
 
     public IReadOnlyCollection<string> GetAvailableSessionIds()
     {
-        return _sessions.Values
-            .Where(s => s.MessageCount > 0 && !s.IsLocked)
-            .Select(s => s.SessionId)
-            .ToList();
+        lock (_acceptLock)
+        {
+            return _sessions.Values
+                .Where(s => s.MessageCount > 0 && !s.IsLocked)
+                .Select(s => s.SessionId)
+                .ToList();
+        }
     }
 
     /// <summary>
     /// Returns all known session IDs with their lock status (for diagnostics).
+    /// Snapshot is best-effort — lock state may change between read and use.
     /// </summary>
-    public IEnumerable<string> GetSessionIds()
+    public IReadOnlyList<string> GetSessionIds()
     {
-        return _sessions.Values.Select(s => $"{s.SessionId}(locked={s.IsLocked},by={s.LockedBy})");
+        lock (_acceptLock)
+        {
+            return _sessions.Values
+                .Select(s => $"{s.SessionId}(locked={s.IsLocked},by={s.LockedBy})")
+                .ToList();
+        }
     }
 }
