@@ -52,7 +52,6 @@ public class ManagementLinkEndpoint : IRequestProcessor
     public void Process(RequestContext requestContext)
     {
         var operation = requestContext.Message.ApplicationProperties?["operation"]?.ToString();
-
         try
         {
             switch (operation)
@@ -86,9 +85,9 @@ public class ManagementLinkEndpoint : IRequestProcessor
                     break;
             }
         }
-        catch (Exception)
+        catch (Exception ex)
         {
-            // Swallow exceptions — the request context may already be completed/disposed
+            Log.LogError(ex, "MGMT exception handling operation={Operation}", operation);
         }
     }
 
@@ -178,6 +177,8 @@ public class ManagementLinkEndpoint : IRequestProcessor
                             continue;
                         }
 
+                        Log.LogWarning("schedule-message: address={Address}, SessionId={SessionId}, MessageId={MessageId}, Subject={Subject}",
+                            address, brokered.SessionId, brokered.MessageId, brokered.Subject);
                         var seqNo = _scheduledProcessor.Schedule(address, brokered, scheduleContext);
                         sequenceNumbers.Add(seqNo);
                     }
@@ -296,6 +297,10 @@ public class ManagementLinkEndpoint : IRequestProcessor
         var sessionId = ExtractSessionId(requestContext);
 
         var sessionManager = FindSessionManager();
+        Log.LogWarning(
+            "HandleRenewSessionLock: sessionId={SessionId}, scopedAddress={ScopedAddress}, scopedQueue={ScopedQueue}, sessionManagerFound={Found}",
+            sessionId, _scopedAddress, _scopedQueue?.Name, sessionManager is not null);
+
         if (sessionId is null || sessionManager is null)
         {
             SendErrorResponse(requestContext, 400, "Session ID required");
@@ -305,6 +310,9 @@ public class ManagementLinkEndpoint : IRequestProcessor
         var lockedUntil = sessionManager.RenewSessionLock(sessionId);
         if (lockedUntil is null)
         {
+            Log.LogWarning(
+                "HandleRenewSessionLock: session '{SessionId}' not found or not locked. Known sessions: [{Sessions}]",
+                sessionId, string.Join(", ", sessionManager.GetSessionIds()));
             SendErrorResponse(requestContext, 404, "Session not found or not locked");
             return;
         }
@@ -343,10 +351,11 @@ public class ManagementLinkEndpoint : IRequestProcessor
         }
 
         var state = sessionManager.GetSessionState(sessionId);
-
+        Log.LogWarning("HandleGetSessionState: sessionId={SessionId}, scopedAddress={ScopedAddress}, stateLength={Length}",
+            sessionId, _scopedAddress, state?.Length);
         var responseBody = new Map
         {
-            { "session-state", state ?? Array.Empty<byte>() }
+            { "session-state", state ?? (object)null! }
         };
         var response = new Message(responseBody)
         {
@@ -393,6 +402,8 @@ public class ManagementLinkEndpoint : IRequestProcessor
             return;
         }
 
+        Log.LogWarning("HandleSetSessionState: sessionId={SessionId}, scopedAddress={ScopedAddress}, stateLength={Length}, scopedQueueSessionManager={SameManager}",
+            sessionId, _scopedAddress, state?.Length, ReferenceEquals(sessionManager, _scopedQueue?.Sessions));
         sessionManager.SetSessionState(sessionId, state);
 
         var response = new Message()

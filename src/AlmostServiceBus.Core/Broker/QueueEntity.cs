@@ -77,10 +77,19 @@ public sealed class QueueEntity : IDisposable
 
     /// <summary>
     /// Session manager for session-enabled queues. Created lazily when <see cref="RequiresSession"/> is true.
+    /// Thread-safe: multiple AMQP links (receiver, management) may access this concurrently.
     /// </summary>
-    public SessionManager? Sessions => RequiresSession
-        ? (_sessionManager ??= new SessionManager(LockDuration))
-        : null;
+    public SessionManager? Sessions
+    {
+        get
+        {
+            if (!RequiresSession) return null;
+            if (_sessionManager is not null) return _sessionManager;
+            var sm = new SessionManager(LockDuration);
+            Interlocked.CompareExchange(ref _sessionManager, sm, null);
+            return _sessionManager;
+        }
+    }
 
     public bool DeadLetteringOnMessageExpiration { get; set; }
 
@@ -150,7 +159,12 @@ public sealed class QueueEntity : IDisposable
         if (RequiresSession)
         {
             if (string.IsNullOrEmpty(message.SessionId))
+            {
+                System.Diagnostics.Debug.WriteLine($"[QUEUE] Dropping message without SessionId on session queue '{Name}', MessageId={message.MessageId}, Subject={message.Subject}");
                 return; // silently drop messages without SessionId
+            }
+            System.Diagnostics.Debug.WriteLine($"[QUEUE] Enqueue to session queue '{Name}', SessionId={message.SessionId}, MessageId={message.MessageId}, Subject={message.Subject}");
+            Console.Error.WriteLine($"[QUEUE] Enqueue to session queue '{Name}', SessionId={message.SessionId}, MessageId={message.MessageId}, Subject={message.Subject}, CorrelationId={message.CorrelationId}");
 
             // Assign sequence number and lock token BEFORE enqueuing to the
             // SessionManager so the PriorityQueue can order by SequenceNumber.
@@ -329,7 +343,9 @@ public sealed class QueueEntity : IDisposable
 
         // Enforce lock expiry — if the lock has expired, re-enqueue the message
         // and throw so the AMQP layer can reject the disposition.
-        if (message.LockedUntil != default && DateTimeOffset.UtcNow > message.LockedUntil)
+        // For session-enabled queues, the session lock governs message lifetime —
+        // individual message locks don't expire independently (real ASB behavior).
+        if (!RequiresSession && message.LockedUntil != default && DateTimeOffset.UtcNow > message.LockedUntil)
         {
             ReEnqueueExpired(lockToken, message);
             throw new MessageLockLostException(lockToken);
@@ -463,6 +479,10 @@ public sealed class QueueEntity : IDisposable
     /// </summary>
     private void SweepExpiredLocks()
     {
+        // Session-enabled queues don't expire individual message locks —
+        // the session lock governs message lifetime.
+        if (RequiresSession) return;
+
         var now = DateTimeOffset.UtcNow;
         foreach (var (lockToken, message) in _pending)
         {
