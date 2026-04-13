@@ -130,9 +130,12 @@ public class SessionReceiverLinkEndpoint : LinkEndpoint
                         _queue.Abandon(lockToken);
                         break;
                     case Rejected rejected:
-                        _queue.DeadLetter(lockToken,
-                            rejected.Error?.Condition?.ToString(),
-                            rejected.Error?.Description);
+                        // Use the shared helper so the Azure SDK's DeadLetterReason /
+                        // DeadLetterErrorDescription (sent in Error.Info map) are
+                        // extracted consistently on session and non-session queues.
+                        var (dlReason, dlDescription) =
+                            ReceiverLinkEndpoint.ExtractDeadLetterInfoStatic(rejected);
+                        _queue.DeadLetter(lockToken, dlReason, dlDescription);
                         break;
                     case Modified modified:
                         if (modified.UndeliverableHere == true)
@@ -183,12 +186,18 @@ public class SessionReceiverLinkEndpoint : LinkEndpoint
             // Release the session lock so a new receiver can pick up this session
             // immediately. Under high load (e.g. connection resets), holding the lock
             // for the full LockDuration (30s) starves new receivers and causes messages
-            // to pile up. The RenewSessionLock 404 race (see below) is acceptable
-            // because if the link is closing, the client is already tearing down.
+            // to pile up.
             //
-            // Note: in normal SDK-initiated close, the SDK releases the session lock
-            // explicitly via $management before closing the link. This path handles
-            // abnormal closes (connection resets, timeouts).
+            // Note: we do NOT reclaim pending messages here. If the client's settlement
+            // for a message was in-flight when the link closed, reclaiming immediately
+            // would race: the settlement might arrive for the old receiver, but the
+            // re-enqueued message is already being processed by a new receiver, causing
+            // R-DUPE cascades via published events.
+            //
+            // Instead, ReclaimPendingForSession is called when a NEW receiver accepts
+            // this session (see ServiceBusLinkProcessor). At that point, any pending
+            // messages for this session must be from a previous (dead) receiver, so
+            // reclaiming is safe.
             try
             {
                 _queue.Sessions?.ReleaseSession(_session.SessionId);
@@ -198,21 +207,6 @@ public class SessionReceiverLinkEndpoint : LinkEndpoint
             catch (Exception ex)
             {
                 Log.LogDebug(ex, "Failed to release session lock for '{SessionId}'", _session.SessionId);
-            }
-
-            // Reclaim any pending (in-flight) messages back to the session queue.
-            // When the pump was running, it dequeued messages from the session and
-            // tracked them in _queue._pending. With the link dead, those messages
-            // would be stuck in _pending until SweepExpiredLocks picks them up (up
-            // to LockDuration delay). Reclaiming them immediately allows the next
-            // receiver to process them without waiting.
-            try
-            {
-                _queue.ReclaimPendingForSession(_session.SessionId);
-            }
-            catch (Exception ex)
-            {
-                Log.LogDebug(ex, "Failed to reclaim pending messages for session '{SessionId}'", _session.SessionId);
             }
         }
         catch (Exception ex)
