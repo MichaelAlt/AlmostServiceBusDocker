@@ -25,6 +25,7 @@ if (Environment.GetEnvironmentVariable("TRACE_AMQP") == "1")
 
 var mgmtBuilder = WebApplication.CreateBuilder(args);
 mgmtBuilder.Logging.SetMinimumLevel(LogLevel.Warning);
+mgmtBuilder.Logging.AddFilter("Microsoft.Hosting.Lifetime", LogLevel.Warning);
 
 // Wire up logging for AMQP components (not DI-managed)
 AmqpLog.Factory = LoggerFactory.Create(b => b
@@ -57,6 +58,7 @@ var dashBuilder = WebApplication.CreateBuilder(new WebApplicationOptions
     ContentRootPath = AppContext.BaseDirectory,
 });
 dashBuilder.Logging.SetMinimumLevel(LogLevel.Warning);
+dashBuilder.Logging.AddFilter("Microsoft.Hosting.Lifetime", LogLevel.Warning);
 dashBuilder.Services.AddViteServices();
 dashBuilder.Services.AddCors();
 
@@ -128,12 +130,40 @@ catch (Exception ex)
 
 // ── Shutdown ──
 
-Console.WriteLine($"Azure Service Bus Emulator started");
-Console.WriteLine($"  Service Bus: localhost:{publicPort} (HTTPS/AMQP), localhost:{amqpsPort} (AMQPS)");
-Console.WriteLine($"  Management:  localhost:{mgmtApiPort} (HTTP), localhost:443 (HTTPS)");
-Console.WriteLine($"  Dashboard:   http://localhost:{dashboardPort}");
+// ── Startup banner ──
+const string cyan   = "\x1b[36m";
+const string magenta= "\x1b[35m";
+const string yellow = "\x1b[33m";
+const string green  = "\x1b[32m";
+const string dim    = "\x1b[2m";
+const string bold   = "\x1b[1m";
+const string reset  = "\x1b[0m";
+
 Console.WriteLine();
-Console.WriteLine($"  Connection String: Endpoint=sb://localhost:{publicPort};SharedAccessKeyName=RootManageSharedAccessKey;SharedAccessKey=emulator");
+Console.WriteLine($"{magenta}   █████╗ ██╗     ███╗   ███╗ ██████╗ ███████╗████████╗{reset}");
+Console.WriteLine($"{magenta}  ██╔══██╗██║     ████╗ ████║██╔═══██╗██╔════╝╚══██╔══╝{reset}");
+Console.WriteLine($"{magenta}  ███████║██║     ██╔████╔██║██║   ██║███████╗   ██║   {reset}");
+Console.WriteLine($"{cyan}  ██╔══██║██║     ██║╚██╔╝██║██║   ██║╚════██║   ██║   {reset}");
+Console.WriteLine($"{cyan}  ██║  ██║███████╗██║ ╚═╝ ██║╚██████╔╝███████║   ██║   {reset}");
+Console.WriteLine($"{cyan}  ╚═╝  ╚═╝╚══════╝╚═╝     ╚═╝ ╚═════╝ ╚══════╝   ╚═╝   {reset}");
+Console.WriteLine($"{bold}        S E R V I C E   B U S   E M U L A T O R{reset}");
+Console.WriteLine();
+Console.WriteLine($"  {green}●{reset} {bold}Service Bus{reset}  {dim}──▶{reset} localhost:{yellow}{publicPort}{reset} {dim}(HTTPS/AMQP){reset}, localhost:{yellow}{amqpsPort}{reset} {dim}(AMQPS){reset}");
+Console.WriteLine($"  {green}●{reset} {bold}Management {reset}  {dim}──▶{reset} localhost:{yellow}{mgmtApiPort}{reset} {dim}(HTTP){reset}, localhost:{yellow}443{reset} {dim}(HTTPS){reset}");
+Console.WriteLine($"  {green}●{reset} {bold}Dashboard  {reset}  {dim}──▶{reset} {cyan}http://localhost:{dashboardPort}{reset}");
+Console.WriteLine();
+var connStr = $"Endpoint=sb://localhost:{publicPort};SharedAccessKeyName=RootManageSharedAccessKey;SharedAccessKey=emulator";
+var boxInner = connStr.Length + 2; // one space padding each side
+const string label = " connection string ";
+var topFill = new string('─', boxInner - label.Length - 1);
+var botFill = new string('─', boxInner);
+var padRight = new string(' ', boxInner - connStr.Length - 1);
+Console.WriteLine($"  {dim}┌─{label}{topFill}┐{reset}");
+Console.WriteLine($"  {dim}│{reset} Endpoint=sb://localhost:{yellow}{publicPort}{reset};SharedAccessKeyName=RootManageSharedAccessKey;SharedAccessKey=emulator{padRight}{dim}│{reset}");
+Console.WriteLine($"  {dim}└{botFill}┘{reset}");
+Console.WriteLine();
+Console.WriteLine($"  {dim}press Ctrl+C to shut down{reset}");
+Console.WriteLine();
 
 // Block until Ctrl+C or process exit, then shut everything down quickly
 var shutdownCts = new CancellationTokenSource();
