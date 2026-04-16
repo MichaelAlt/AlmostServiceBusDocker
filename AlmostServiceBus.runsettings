@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Caps vstest's cross-assembly parallelism at 3 so that at most three test
+  DLLs spin up their emulator fixtures concurrently.  Running all five+
+  test projects in parallel under CI contends for ephemeral ports and has
+  surfaced intermittent "Address already in use" / "Connection refused"
+  failures.  Within-assembly xunit parallelism is unaffected.
+-->
+<RunSettings>
+  <RunConfiguration>
+    <MaxCpuCount>3</MaxCpuCount>
+  </RunConfiguration>
+</RunSettings>
