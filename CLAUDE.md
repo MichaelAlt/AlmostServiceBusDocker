@@ -7,14 +7,13 @@ A from-scratch Azure Service Bus emulator that runs locally, compatible with the
 ## Architecture
 
 ```
-Client (Azure SDK / MassTransit / etc.)
+Client (Azure SDK / MassTransit / etc.) — UseDevelopmentEmulator=true
     |
-Port 5672 (public) — also 5671 (AMQPS), 5300 (HTTP), 443 (HTTPS)
+Port 5672 (public AMQP/HTTP), Port 5300 (admin HTTP, MS-emulator compat)
     |
-TcpMultiplexer (first-byte sniffing)
-    ├── 0x41 (AMQP) → plain AMQP backend
-    ├── 0x16 (TLS) → SslStream termination → detect HTTP vs AMQP
-    └── HTTP methods → plain HTTP backend
+TcpMultiplexer (first-byte sniffing — plaintext only)
+    ├── 0x41 (AMQP)    → plain AMQP backend
+    └── HTTP verb byte → plain HTTP backend
     |
 ┌───────────────────┐    ┌──────────────────┐
 │ AMQPNetLite        │    │ Kestrel HTTP      │
@@ -25,9 +24,15 @@ TcpMultiplexer (first-byte sniffing)
     NamespaceRegistry (shared in-memory broker)
 ```
 
+The emulator is plaintext-only — it matches Microsoft's official Service Bus
+emulator, which clients reach via `UseDevelopmentEmulator=true` in the
+connection string. That flag tells `Azure.Messaging.ServiceBus` to use plain
+AMQP for data and plain HTTP for admin. No TLS, no certificates, no
+privileged port binding.
+
 ### Key Components
 
-- **TcpMultiplexer** (`src/.../Hosting/TcpMultiplexer.cs`) — single port serves TLS/HTTPS/AMQP/plain HTTP
+- **TcpMultiplexer** (`src/.../Hosting/TcpMultiplexer.cs`) — single port serves plain AMQP and plain HTTP, routed by first-byte sniffing
 - **EmulatorContainer** (`src/.../Amqp/EmulatorContainer.cs`) — custom `IContainer` replacing AMQPNetLite's `ContainerHost` (fixes transaction coordinator crash)
 - **ReceiverLinkEndpoint** (`src/.../Amqp/ReceiverLinkEndpoint.cs`) — message pump with channel-based delivery (`WaitToReadAsync`), AMQP drain support, credit checking via reflection
 - **SessionReceiverLinkEndpoint** (`src/.../Amqp/SessionReceiverLinkEndpoint.cs`) — session-aware variant
@@ -68,9 +73,19 @@ Namespace is extracted from `SharedAccessKeyName` in the connection string (NOT 
 
 Azure SDK's `ServiceBusMessageBatch` sends messages as a single AMQP transfer where the body contains `Data[]` sections, each being a complete AMQP-encoded inner message. The emulator detects this format and decodes individual messages, preserving all properties (Subject, ApplicationProperties, etc.). Verified by 15 dedicated integration tests covering batch+processor, plain AMQP, two-client, and cascading-send scenarios.
 
+## AMQP Transactions
+
+Supported. The emulator runs a server-side transaction coordinator so the Azure
+SDK's `TransactionScope` works end-to-end, including cross-entity transactions
+(`ServiceBusClientOptions.EnableCrossEntityTransactions = true`).
+
+- **TransactionManager** (`src/.../Broker/Transactions/TransactionManager.cs`) — broker-agnostic. `Declare()` issues a GUID `txn-id`; callers `Enlist` commit/rollback delegates; `Commit` applies them in order, `Rollback` discards. Globally-unique ids mean one flat table spans all connections and entities.
+- **TransactionCoordinatorEndpoint** (`src/.../Amqp/TransactionCoordinatorEndpoint.cs`) — accepts the `Coordinator` link (previously rejected) and services `declare`/`discharge`, replying with `Declared`/`Accepted`.
+- **Buffering** — `SenderLinkEndpoint` buffers transactional sends (delivery-state is `TransactionalState`), the receiver endpoints buffer transactional settlements. Both echo a transactional disposition; the work applies on commit. On rollback, sends are discarded and uncommitted completes simply let the lock expire (redelivery bumps `DeliveryCount`).
+- Verified by `TransactionManagerTests` (unit) and `TransactionTests` (real Azure SDK: commit/rollback, single- and cross-entity).
+
 ## Known Gaps
 
-- **AMQP Transactions** — `Coordinator` links are gracefully rejected (`amqp:not-implemented`). NServiceBus defaults to transactions; use `TransportTransactionMode.ReceiveOnly` as workaround.
 - **Wolverine tracking** — `tracking_correlation_id_on_everything` compliance tests time out. Standalone tests confirm correct AMQP behavior; the timeout is in Wolverine's handler pipeline. See `tests/ms-emulator-comparison/` to verify against Microsoft's official emulator.
 
 ## Running
@@ -123,6 +138,6 @@ No csproj changes needed — just tag and push.
 
 1. **AMQPNetLite not Microsoft.Azure.Amqp** — Microsoft.Azure.Amqp's server-side API is internal/undocumented. AMQPNetLite works but needs workarounds (delivery tags, credit reflection).
 2. **Custom IContainer** — replaced `ContainerHost` to handle `Coordinator` targets without crashing.
-3. **TLS termination in multiplexer** — single port serves everything. Kestrel runs plain HTTP internally.
+3. **Plaintext-only, MS-emulator compatible** — no TLS, no dev cert, no privileged ports. Clients connect via `UseDevelopmentEmulator=true`, which makes the Azure SDK speak plain AMQP (port 5672) and plain HTTP (port 5300) — the same wire-level behaviour as Microsoft's official emulator.
 4. **Channel-based message pump** — `TryDequeueImmediate` + `WaitToReadAsync` (channel reader). Wakes instantly when a message is enqueued or abandoned. The only micro-delay is 1ms when waiting for AMQP link credit from the client.
 5. **Clone() doesn't copy LockToken or SequenceNumber** — each queue assigns fresh values on enqueue. Copying caused R-DUPE in MassTransit.
