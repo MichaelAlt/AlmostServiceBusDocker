@@ -39,7 +39,7 @@ public class TransactionManagerTests
 
         var committed = mgr.Commit(txnId);
 
-        Assert.True(committed);
+        Assert.Equal(CommitResult.Committed, committed);
         Assert.Equal(new[] { 1, 2, 3 }, order);
     }
 
@@ -74,11 +74,11 @@ public class TransactionManagerTests
     }
 
     [Fact]
-    public void Commit_of_unknown_id_returns_false()
+    public void Commit_of_unknown_id_returns_unknown()
     {
         var mgr = new TransactionManager();
 
-        Assert.False(mgr.Commit(new byte[] { 1, 2, 3, 4 }));
+        Assert.Equal(CommitResult.UnknownTransaction, mgr.Commit(new byte[] { 1, 2, 3, 4 }));
     }
 
     [Fact]
@@ -98,14 +98,14 @@ public class TransactionManagerTests
     }
 
     [Fact]
-    public void Transaction_is_removed_after_commit_so_second_commit_returns_false()
+    public void Transaction_is_removed_after_commit_so_second_commit_is_unknown()
     {
         var mgr = new TransactionManager();
         var txnId = mgr.Declare();
         mgr.Enlist(txnId, commit: () => { });
 
-        Assert.True(mgr.Commit(txnId));
-        Assert.False(mgr.Commit(txnId));
+        Assert.Equal(CommitResult.Committed, mgr.Commit(txnId));
+        Assert.Equal(CommitResult.UnknownTransaction, mgr.Commit(txnId));
     }
 
     [Fact]
@@ -119,7 +119,7 @@ public class TransactionManagerTests
     }
 
     [Fact]
-    public void Commit_runs_remaining_actions_even_when_one_throws()
+    public void Commit_reports_rolled_back_when_an_action_throws_but_still_runs_the_rest()
     {
         var mgr = new TransactionManager();
         var txnId = mgr.Declare();
@@ -130,7 +130,47 @@ public class TransactionManagerTests
 
         var committed = mgr.Commit(txnId);
 
-        Assert.True(committed);
+        // A throwing commit is surfaced (not silently treated as success), while the remaining
+        // actions still run — an in-memory broker cannot truly two-phase-commit.
+        Assert.Equal(CommitResult.RolledBack, committed);
         Assert.True(lastRan);
+    }
+
+    [Fact]
+    public void Commit_with_a_failing_prepare_applies_nothing_and_reports_rolled_back()
+    {
+        var mgr = new TransactionManager();
+        var txnId = mgr.Declare();
+        var sendApplied = false;
+        var settleApplied = false;
+        var settleRolledBack = false;
+
+        // A send (always preparable) followed by a settlement whose lock is "lost" (prepare → false).
+        mgr.Enlist(txnId, commit: () => sendApplied = true);
+        mgr.Enlist(txnId,
+            commit: () => settleApplied = true,
+            rollback: () => settleRolledBack = true,
+            prepare: () => false);
+
+        var result = mgr.Commit(txnId);
+
+        Assert.Equal(CommitResult.RolledBack, result);
+        Assert.False(sendApplied);   // nothing applied — atomic
+        Assert.False(settleApplied);
+        Assert.True(settleRolledBack);
+    }
+
+    [Fact]
+    public void Commit_with_passing_prepares_applies_everything()
+    {
+        var mgr = new TransactionManager();
+        var txnId = mgr.Declare();
+        var applied = 0;
+
+        mgr.Enlist(txnId, commit: () => applied++, prepare: () => true);
+        mgr.Enlist(txnId, commit: () => applied++, prepare: () => true);
+
+        Assert.Equal(CommitResult.Committed, mgr.Commit(txnId));
+        Assert.Equal(2, applied);
     }
 }

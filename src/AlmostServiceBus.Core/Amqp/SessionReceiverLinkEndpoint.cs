@@ -226,17 +226,9 @@ public class SessionReceiverLinkEndpoint : LinkEndpoint
 
         try
         {
-            _transactions.Enlist(txnState.TxnId, commit: () =>
-            {
-                try
-                {
-                    ApplySettlement(token, outcome);
-                }
-                catch (MessageLockLostException)
-                {
-                    Log.LogWarning("Txn commit: lock {LockToken} lost before settlement on session '{SessionId}'", token, _session.SessionId);
-                }
-            });
+            // Don't swallow a settlement failure at commit: let it surface so the discharge is
+            // rejected rather than reported as a clean commit that silently dropped the work.
+            _transactions.Enlist(txnState.TxnId, commit: () => ApplySettlement(token, outcome));
         }
         catch (Broker.Transactions.TransactionNotFoundException)
         {

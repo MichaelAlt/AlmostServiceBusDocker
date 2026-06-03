@@ -225,20 +225,13 @@ public class ReceiverLinkEndpoint : LinkEndpoint
 
         try
         {
-            _transactions.Enlist(txnState.TxnId, commit: () =>
-            {
-                try
-                {
-                    SettleMessage(token, outcome);
-                }
-                catch (MessageLockLostException)
-                {
-                    // The lock expired before the transaction committed. We already echoed an
-                    // accepted disposition, so we can't un-send it; log and move on. Short
-                    // transactions (the normal case) keep the lock alive.
-                    Log.LogWarning("Txn commit: lock {LockToken} lost before settlement on '{Queue}'", token, _queue.Name);
-                }
-            });
+            // prepare: validated before any operation in the transaction is applied, so a
+            // settlement whose lock was lost rolls the whole commit back instead of being
+            // silently dropped while the discharge still reports success.
+            _transactions.Enlist(txnState.TxnId,
+                commit: () => SettleMessage(token, outcome),
+                rollback: null,
+                prepare: () => _queue.IsLockValid(token));
         }
         catch (Broker.Transactions.TransactionNotFoundException)
         {

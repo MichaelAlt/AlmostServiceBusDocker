@@ -338,6 +338,24 @@ public sealed class QueueEntity : IDisposable
     }
 
     /// <summary>
+    /// Returns whether a settlement against <paramref name="lockToken"/> would currently
+    /// succeed: the message is still pending and its lock has neither expired nor been swept.
+    /// Used as a transaction prepare-check so a commit doesn't silently drop a settlement
+    /// whose lock was lost. For session queues the session lock governs lifetime, so an
+    /// individual message lock is treated as valid while it is still pending.
+    /// </summary>
+    public bool IsLockValid(string lockToken)
+    {
+        if (_sweptLockTokens.ContainsKey(lockToken))
+            return false;
+        if (!_pending.TryGetValue(lockToken, out var message))
+            return false;
+        if (RequiresSession)
+            return true;
+        return message.LockedUntil == default || DateTimeOffset.UtcNow <= message.LockedUntil;
+    }
+
+    /// <summary>
     /// Completes a message, removing it from the pending dictionary.
     /// Throws <see cref="MessageLockLostException"/> if the lock has expired.
     /// </summary>

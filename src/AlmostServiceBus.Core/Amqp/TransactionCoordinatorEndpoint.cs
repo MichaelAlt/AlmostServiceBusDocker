@@ -47,25 +47,38 @@ public sealed class TransactionCoordinatorEndpoint : LinkEndpoint
                     break;
 
                 case Discharge discharge:
-                    var applied = discharge.Fail
-                        ? _transactions.Rollback(discharge.TxnId)
-                        : _transactions.Commit(discharge.TxnId);
-                    Log.LogDebug("TXN discharge {TxnId} fail={Fail} applied={Applied}",
-                        Convert.ToHexString(discharge.TxnId), discharge.Fail, applied);
-
-                    if (applied)
+                    if (discharge.Fail)
                     {
-                        messageContext.Link.DisposeMessage(messageContext.Message, new Accepted(), true);
+                        var rolledBack = _transactions.Rollback(discharge.TxnId);
+                        Log.LogDebug("TXN discharge {TxnId} fail=true found={Found}",
+                            Convert.ToHexString(discharge.TxnId), rolledBack);
+                        if (rolledBack)
+                            messageContext.Link.DisposeMessage(messageContext.Message, new Accepted(), true);
+                        else
+                            RejectDischarge(messageContext, "amqp:transaction-unknown-id", "Unknown or already-discharged transaction id.");
+                        break;
                     }
-                    else
+
+                    var result = _transactions.Commit(discharge.TxnId);
+                    Log.LogDebug("TXN discharge {TxnId} fail=false result={Result}",
+                        Convert.ToHexString(discharge.TxnId), result);
+
+                    switch (result)
                     {
-                        messageContext.Link.DisposeMessage(messageContext.Message, new Rejected
-                        {
-                            Error = new Error(new Symbol("amqp:transaction-unknown-id"))
-                            {
-                                Description = "Unknown or already-discharged transaction id."
-                            }
-                        }, true);
+                        case CommitResult.Committed:
+                            messageContext.Link.DisposeMessage(messageContext.Message, new Accepted(), true);
+                            break;
+                        case CommitResult.RolledBack:
+                            // One or more buffered operations could not be committed (e.g. a
+                            // lost message lock). Real ASB does not report such a discharge as
+                            // committed — reject so the SDK raises instead of silently dropping.
+                            RejectDischarge(messageContext, "amqp:transaction-rollback",
+                                "The transaction was rolled back: a buffered operation could not be committed.");
+                            break;
+                        default:
+                            RejectDischarge(messageContext, "amqp:transaction-unknown-id",
+                                "Unknown or already-discharged transaction id.");
+                            break;
                     }
                     break;
 
@@ -88,6 +101,12 @@ public sealed class TransactionCoordinatorEndpoint : LinkEndpoint
             });
         }
     }
+
+    private static void RejectDischarge(MessageContext messageContext, string condition, string description) =>
+        messageContext.Link.DisposeMessage(messageContext.Message, new Rejected
+        {
+            Error = new Error(new Symbol(condition)) { Description = description }
+        }, true);
 
     // AMQPNetLite usually decodes the body's described type directly, but some
     // encoders wrap it in an AmqpValue / DescribedValue. Peel those so we always

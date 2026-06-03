@@ -40,30 +40,36 @@ public sealed class TransactionManager
     /// runs (in enlist order) if the transaction commits; <paramref name="rollback"/>
     /// runs if it rolls back.
     /// </summary>
+    /// <param name="prepare">
+    /// Optional pre-commit check. On commit the manager runs every operation's prepare first;
+    /// if any returns <c>false</c> the whole transaction rolls back without applying anything,
+    /// so a settlement whose lock was lost can't be silently dropped.
+    /// </param>
     /// <exception cref="TransactionNotFoundException">
     /// The id is unknown — either never declared or already discharged.
     /// </exception>
-    public void Enlist(byte[] txnId, Action commit, Action? rollback = null)
+    public void Enlist(byte[] txnId, Action commit, Action? rollback = null, Func<bool>? prepare = null)
     {
         if (!_transactions.TryGetValue(Key(txnId), out var txn))
             throw new TransactionNotFoundException(txnId);
 
-        txn.Enlist(commit, rollback);
+        txn.Enlist(commit, rollback, prepare);
     }
 
     /// <summary>
-    /// Commits the transaction: runs all buffered commit actions in order, then
-    /// removes it. Best-effort — a throwing action is logged and the remaining
-    /// actions still run (an in-memory broker cannot truly two-phase-commit).
-    /// Returns <c>false</c> for an unknown id.
+    /// Commits the transaction, then removes it. Validates every operation can commit before
+    /// applying any (see <see cref="Transaction.RunCommit"/>): returns
+    /// <see cref="CommitResult.Committed"/> when all operations applied,
+    /// <see cref="CommitResult.RolledBack"/> when an operation could not be committed (so
+    /// nothing — or as little as possible — was applied and the client should see a failure),
+    /// and <see cref="CommitResult.UnknownTransaction"/> for an unknown id.
     /// </summary>
-    public bool Commit(byte[] txnId)
+    public CommitResult Commit(byte[] txnId)
     {
         if (!_transactions.TryRemove(Key(txnId), out var txn))
-            return false;
+            return CommitResult.UnknownTransaction;
 
-        txn.RunCommit(Log);
-        return true;
+        return txn.RunCommit(Log) ? CommitResult.Committed : CommitResult.RolledBack;
     }
 
     /// <summary>
@@ -81,4 +87,16 @@ public sealed class TransactionManager
     }
 
     private static string Key(byte[] txnId) => Convert.ToHexString(txnId);
+}
+
+/// <summary>
+/// Outcome of committing a transaction, so the coordinator can settle the discharge
+/// accordingly: accept a clean commit, reject a commit that could not be applied, and
+/// reject an unknown/already-discharged id with the appropriate AMQP error.
+/// </summary>
+public enum CommitResult
+{
+    Committed,
+    RolledBack,
+    UnknownTransaction,
 }
