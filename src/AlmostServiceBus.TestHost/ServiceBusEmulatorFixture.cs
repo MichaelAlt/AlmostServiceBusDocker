@@ -95,7 +95,7 @@ public class ServiceBusEmulatorFixture : IAsyncDisposable
 
         _webApp = builder.Build();
         _webApp.MapServiceBusManagementApi(_registry);
-        _webApp.MapDashboardApi(_registry);
+        _webApp.MapDashboardApi(_registry, new EmulatorInfo(ConnectionString, PublicPort, 5300, HttpPort));
         _webApp.MapDashboardSse(_eventBus);
         await _webApp.StartAsync();
 
