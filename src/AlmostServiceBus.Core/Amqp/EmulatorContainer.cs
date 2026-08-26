@@ -8,6 +8,7 @@ using global::Amqp.Listener;
 using global::Amqp.Types;
 using AlmostServiceBus.Core.Broker;
 using Microsoft.Extensions.Logging;
+using System.Runtime.CompilerServices;
 
 namespace AlmostServiceBus.Core.Amqp;
 
@@ -26,6 +27,7 @@ public class EmulatorContainer : IContainer
 {
     private static readonly ILogger Log = AmqpLog.CreateLogger<EmulatorContainer>();
 
+    private readonly ConditionalWeakTable<Connection, RequestProcessorEntry> _cbsEntries = new();
     private readonly Dictionary<string, RequestProcessorEntry> _requestProcessors = new(StringComparer.OrdinalIgnoreCase);
     private ILinkProcessor? _linkProcessor;
     private NamespaceRegistry? _registry;
@@ -125,6 +127,8 @@ public class EmulatorContainer : IContainer
 
     public Link CreateLink(ListenerConnection connection, ListenerSession session, Attach attach)
     {
+        Log.LogDebug("[{Timestamp:yyyy-MM-dd HH:mm:ss.fff}] CreateLink: Role={Role} ({Direction}), LinkName={LinkName}, ConnId={ConnId}", DateTime.UtcNow, attach.Role, attach.Role ? "recv" : "send", attach.LinkName, connection.GetHashCode());
+
         // Track connection lifecycle — log when connections close with errors
         var connId = connection.GetHashCode().ToString();
         if (_trackedConnections.TryAdd(connId, 0))
@@ -207,6 +211,22 @@ public class EmulatorContainer : IContainer
         {
             if (attach.Target is Target t)
                 address = t.Address;
+        }
+
+        if (address != null && address.Equals("$cbs", StringComparison.OrdinalIgnoreCase))
+        {
+            var conn = (Connection)connection;
+
+            // ConditionalWeakTable uses reference identity (the Connection object itself),
+            // preventing hash collisions and auto-cleaning up when the connection is GC'd.
+            var entry = _cbsEntries.GetValue(conn, _ =>
+            {
+                Log.LogDebug("[{Timestamp:yyyy-MM-dd HH:mm:ss.fff}] Created per-connection CBS processor for connection: {ConnId}", DateTime.UtcNow, conn.GetHashCode());
+                return new RequestProcessorEntry(new CbsRequestProcessor());
+            });
+
+            AttachRequestProcessorLink(entry, listenerLink, address, attach);
+            return true;
         }
 
         // Diagnostic logging for link attachment
@@ -398,7 +418,7 @@ public class EmulatorContainer : IContainer
                 entry.ResponseLinks[replyTo] = link;
             }
 
-            Log.LogDebug("AttachRequestProcessorLink: response link for '{Address}', replyTo='{ReplyTo}'", address, replyTo);
+            Log.LogDebug("[{Timestamp:yyyy-MM-dd HH:mm:ss.fff}] AttachRequestProcessorLink: response link for '{Address}', replyTo='{ReplyTo}'", DateTime.UtcNow, address, replyTo);
 
             // SettleOnSend has an internal setter — use reflection.
             SettleOnSendProperty?.SetValue(link, true);
@@ -464,6 +484,8 @@ public class EmulatorContainer : IContainer
     /// </summary>
     private static void DispatchRequest(ListenerLink link, Message message, RequestProcessorEntry entry)
     {
+
+        AmqpPropertiesExtensions.SanitizeProperties(message);
         var operation = message.ApplicationProperties?["operation"] as string;
 
         // Find the response link for this request.

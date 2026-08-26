@@ -73,11 +73,7 @@ public class TcpMultiplexer
         TcpClient? backend = null;
         try
         {
-            // Disable Nagle: this is a relay hop and AMQP/HTTP handshakes are many
-            // small round-trip frames. Without NoDelay, Nagle + delayed-ACK adds
-            // tens-to-hundreds of ms per round-trip, making first connects slow.
             client.NoDelay = true;
-
             var stream = client.GetStream();
 
             var firstByte = new byte[1];
@@ -88,31 +84,31 @@ public class TcpMultiplexer
                 return;
             }
 
-            if (firstByte[0] == AmqpByte)
+            int targetPort = firstByte[0] switch
             {
-                backend = await ConnectToBackend(_amqpPort, ct);
-                var backendStream = backend.GetStream();
-                await backendStream.WriteAsync(firstByte.AsMemory(0, 1), ct);
-                await ProxyBidirectional(stream, backendStream, client, backend, ct);
-            }
-            else if (IsHttpByte(firstByte[0]))
-            {
-                backend = await ConnectToBackend(_httpPort, ct);
-                var backendStream = backend.GetStream();
-                await backendStream.WriteAsync(firstByte.AsMemory(0, 1), ct);
-                await ProxyBidirectional(stream, backendStream, client, backend, ct);
-            }
-            else
+                AmqpByte => _amqpPort,
+                var b when IsHttpByte(b) => _httpPort,
+                _ => 0
+            };
+
+            if (targetPort == 0)
             {
                 client.Dispose();
+                return;
             }
+
+            backend = await ConnectToBackend(targetPort, ct);
+            var backendStream = backend.GetStream();
+
+            // 1. Write sniffed byte AND FLUSH IMMEDIATELY so backend gets byte 1 of 8
+            await backendStream.WriteAsync(firstByte.AsMemory(0, 1), ct);
+            await backendStream.FlushAsync(ct);
+
+            // 2. Proxy streams with real-time flushing
+            await ProxyBidirectionalWithFlush(stream, backendStream, client, backend, ct);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            // A peer reset/abort is benign here: it's a health probe, port scan, or
-            // a client that disconnected mid-handshake. Aspire's TCP readiness probe
-            // routinely connects and closes without sending a byte, which surfaces as
-            // SocketException 10054. Don't treat these as warnings.
             if (IsBenignDisconnect(ex))
                 Log.LogDebug("TcpMultiplexer: peer closed connection ({Message})", ex.Message);
             else
@@ -145,47 +141,36 @@ public class TcpMultiplexer
         _ => false,
     };
 
-    private static async Task ProxyBidirectional(
-        Stream clientStream, NetworkStream backendStream,
+    private static async Task ProxyBidirectionalWithFlush(
+        NetworkStream clientStream, NetworkStream backendStream,
         TcpClient client, TcpClient backend, CancellationToken ct)
     {
-        // Wrap each direction so that when one side's copy completes (EOF),
-        // we immediately signal half-close on the other side's socket.
-        // This ensures ContainerHost sees EOF promptly and can respond
-        // with its AMQP Close frame instead of waiting for a timeout.
-        var clientToBackend = CopyAndSignalAsync(clientStream, backendStream, backend, ct);
-        var backendToClient = CopyAndSignalAsync(backendStream, clientStream, client, ct);
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+
+        var clientToBackend = PumpStreamAsync(clientStream, backendStream, cts.Token);
+        var backendToClient = PumpStreamAsync(backendStream, clientStream, cts.Token);
 
         await Task.WhenAny(clientToBackend, backendToClient);
+        cts.Cancel(); // Stop the other direction cleanly
 
-        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(2));
-        try
-        {
-            await Task.WhenAll(clientToBackend, backendToClient)
-                .WaitAsync(timeout.Token);
-        }
-        catch { }
+        try { await Task.WhenAll(clientToBackend, backendToClient); } catch { }
 
         try { client.Client.Shutdown(SocketShutdown.Both); } catch { }
         try { backend.Client.Shutdown(SocketShutdown.Both); } catch { }
     }
 
-    /// <summary>
-    /// Copies data from source to destination, then signals half-close on the
-    /// destination's underlying socket. This propagates EOF through the proxy
-    /// so the peer sees the connection close immediately rather than waiting
-    /// for an idle timeout.
-    /// </summary>
-    private static async Task CopyAndSignalAsync(
-        Stream source, Stream destination, TcpClient destinationClient, CancellationToken ct)
+    private static async Task PumpStreamAsync(Stream source, Stream destination, CancellationToken ct)
     {
+        var buffer = new byte[8192];
         try
         {
-            await source.CopyToAsync(destination, ct);
-            await destination.FlushAsync(ct);
+            int bytesRead;
+            while ((bytesRead = await source.ReadAsync(buffer.AsMemory(0, buffer.Length), ct)) > 0)
+            {
+                await destination.WriteAsync(buffer.AsMemory(0, bytesRead), ct);
+                await destination.FlushAsync(ct); // Guarantees frames reach AMQPNetLite instantly
+            }
         }
-        catch { }
-
-        try { destinationClient.Client.Shutdown(SocketShutdown.Send); } catch { }
+        catch { /* Connection closed or cancelled */ }
     }
 }

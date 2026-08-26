@@ -95,6 +95,10 @@ public sealed class QueueEntity : IDisposable
     public bool DeadLetteringOnMessageExpiration { get; set; }
 
     public TimeSpan DefaultMessageTimeToLive { get; set; } = TimeSpan.MaxValue;
+    
+    public bool EnablePartitioning { get; set; } = false;
+
+    public bool EnableExpress { get; set; } = false;
 
     public bool EnableBatchedOperations { get; set; } = true;
 
@@ -106,7 +110,7 @@ public sealed class QueueEntity : IDisposable
 
     public TimeSpan? AutoDeleteOnIdle { get; set; }
 
-    public bool RequiresDuplicateDetection { get; set; }
+    public bool RequiresDuplicateDetection { get; set; } = false;
 
     public TimeSpan DuplicateDetectionHistoryTimeWindow { get; set; } = TimeSpan.FromMinutes(10);
 

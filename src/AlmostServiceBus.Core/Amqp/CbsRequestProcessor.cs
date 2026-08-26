@@ -4,6 +4,7 @@ using System.Text;
 using global::Amqp;
 using global::Amqp.Framing;
 using global::Amqp.Listener;
+using Microsoft.Extensions.Logging;
 
 namespace AlmostServiceBus.Core.Amqp;
 
@@ -15,6 +16,8 @@ namespace AlmostServiceBus.Core.Amqp;
 /// </summary>
 public class CbsRequestProcessor : IRequestProcessor
 {
+     private static readonly ILogger Log = AmqpLog.CreateLogger<CbsRequestProcessor>();
+
     private static readonly TimeSpan DefaultTokenExpiration = TimeSpan.FromHours(1);
 
     private sealed class NamespaceHolder(string value)
@@ -87,6 +90,10 @@ public class CbsRequestProcessor : IRequestProcessor
     public void Process(RequestContext requestContext)
     {
         TryExtractNamespace(requestContext);
+        
+        // Add debug logging to trace token handling
+        Log.LogDebug("Processed CBS token for connection. CorrelationId: {CorrelationId}", 
+            requestContext.Message.Properties?.MessageId);
 
         var response = new Message()
         {

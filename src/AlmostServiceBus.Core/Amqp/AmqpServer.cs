@@ -29,7 +29,7 @@ public class AmqpServer : IDisposable
     }
 
     public void Start()
-    {
+    {        
         var address = new Address(_options.Host, _options.Port, null, null, "/", "AMQP");
 
         // Build the custom container that handles Coordinator targets gracefully.
@@ -43,11 +43,17 @@ public class AmqpServer : IDisposable
         var container = new EmulatorContainer();
         container.SetNamespaceRegistry(_registry, _scheduledProcessor);
         container.SetTransactionManager(transactions);
-        container.RegisterRequestProcessor("$cbs", new CbsRequestProcessor());
+
+        // No clue about that one but Claude was right about it beeing fucky when not one per request level
+        // dont have time to look at it in depth it works now but propably i added hell by doing this #sorry
+        //container.RegisterRequestProcessor("$cbs", new CbsRequestProcessor());
         container.RegisterRequestProcessor("$management", container.CreateManagementEndpoint(defaultContext, _scheduledProcessor));
         container.RegisterLinkProcessor(new ServiceBusLinkProcessor(_registry, _scheduledProcessor, transactions));
 
         _listener = new ConnectionListener(address, container);
+
+        // Not the acutal fix for concurrent $cbs token negotiation issue with NodeJS Azure SDK but at least remediates it from 60 seconds hang to 5 seconds
+        _listener.AMQP.IdleTimeout = 5000;
 
         // Enable SASL so the Azure SDK's plain-AMQP connections (UseDevelopmentEmulator=true)
         // can authenticate. The SDK uses MSSBCBS (Microsoft Service Bus CBS) mechanism.
